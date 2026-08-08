@@ -18,15 +18,17 @@ import type { StatusBucket } from "./types";
  * existe nesta fonte. Caso a distinção seja necessária no futuro, ela
  * dependeria de um export adicional de parcelas/repasses.
  *
- * Valores observados nos 14 registros disponíveis na primeira extração:
- * "Pago" e "Vencido". Os demais valores abaixo (Pendente, Cancelado,
- * Estornado, Chargeback, Reembolsado etc.) são antecipados a partir do
- * vocabulário de pagamentos em português usado pela própria Layers nos
- * outros três documentos de referência lidos (RESUMO_INVESTIGACAO,
- * documentacao_tecnica, METODOLOGIA) — não foram confirmados nesta fonte
- * específica. Qualquer valor que não bata com o mapeamento abaixo é
- * marcado como "nao_classificado" e sinalizado no painel de qualidade de
- * dados, em vez de ser presumido silenciosamente.
+ * Valores observados até agora: "Pago", "Vencido" (export por unidade,
+ * coluna "Status do Pagamento") e "Em aberto" (export consolidado
+ * "Matriz", coluna "Status da Venda" — nome de coluna diferente, mesmo
+ * conceito; ver leitura combinada em lib/etl.ts). Os demais valores abaixo
+ * (Pendente, Cancelado, Estornado, Chargeback, Reembolsado etc.) são
+ * antecipados a partir do vocabulário de pagamentos em português usado
+ * pela própria Layers nos outros três documentos de referência lidos
+ * (RESUMO_INVESTIGACAO, documentacao_tecnica, METODOLOGIA) — não foram
+ * confirmados nesta fonte específica. Qualquer valor que não bata com o
+ * mapeamento abaixo é marcado como "nao_classificado" e sinalizado no
+ * painel de qualidade de dados, em vez de ser presumido silenciosamente.
  */
 const STATUS_MAP: Record<string, StatusBucket> = {
   pago: "pago",
@@ -42,6 +44,7 @@ const STATUS_MAP: Record<string, StatusBucket> = {
   vencido: "pendente_vencido",
   atrasado: "pendente_vencido",
   inadimplente: "pendente_vencido",
+  "em aberto": "pendente_vencido",
 
   cancelado: "cancelado",
   cancelada: "cancelado",

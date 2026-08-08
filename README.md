@@ -29,9 +29,9 @@ não restringe quem acessa o link diretamente.
 
 ```
 Bolsão Matriz 2027/                      <- pasta de origem dos exports CSV
-├── *.csv                                <- arquivos brutos exportados da Layers (uma unidade por arquivo)
+├── *.csv                                <- arquivo(s) bruto(s) exportado(s) da Layers
 └── painel-bolsao-2027/                  <- aplicação (este diretório)
-    ├── data/raw/                        <- cópia dos CSVs usada pelo build (ver "Atualizar os dados")
+    ├── data/raw/                        <- espelho dos CSVs usado pelo build (ver "Atualizar os dados")
     ├── lib/                             <- ingestão, normalização, regras de negócio, KPIs (sem UI)
     │   ├── units.ts                     <- lista das 11 unidades + identificação por canal de venda
     │   ├── normalize.ts                 <- parsing de moeda, data, formulário do aluno
@@ -71,20 +71,52 @@ em tempo real (é por deploy).
 
 Os arquivos `*_itens_da_venda___resumo_*.csv` são exports do checkout Layers
 do produto "Pré-Matrícula Bolsão 2027" (R$300, à vista ou parcelado no
-cartão), um arquivo por unidade. Cada linha é um item comprado dentro de um
-pedido — hoje sempre 1 item por pedido.
+cartão). Existem dois formatos observados, ambos suportados pelo mesmo
+parser (`lib/etl.ts` lê o nome de coluna que existir em cada arquivo):
+
+- **Export por unidade** (primeira extração, 08/08/2026 ~12h): um arquivo
+  por unidade, coluna de status chamada `Status do Pagamento`.
+- **Export consolidado "Matriz"** (segunda extração, mesma data ~12h40,
+  arquivo `Matriz_itens_da_venda___resumo_*.csv`): um único arquivo com
+  todas as unidades, confirmado como **superset estrito** do export por
+  unidade (contém os mesmos pedidos + novos). Traz 3 colunas extras:
+  `Categoria`, `Nome do Marketplace` (segundo sinal de unidade, usado como
+  checagem cruzada — ver alerta `unidade_marketplace_canal_divergentes`) e
+  `Código do Pedido` (um ID alternativo, ex. `LM-XXXXX-YYYYY`, mantido só
+  para rastreabilidade). A coluna de status aqui se chama `Status da
+  Venda` em vez de `Status do Pagamento` — mesmo conceito, nome de coluna
+  diferente. **A partir desta segunda extração, o export consolidado
+  passou a ser a única fonte na pasta raiz** — os 5 arquivos por unidade
+  não estão mais lá (o script `sync-data.mjs` espelha isso: remove de
+  `data/raw/` qualquer CSV que não exista mais na pasta de origem).
+
+Cada linha é um item comprado dentro de um pedido. **Um pedido pode conter
+mais de um aluno** — caso real confirmado nos dados (pedido
+`LP1-MHPM3-AM7J4`, Campo Grande): um responsável comprou 2
+pré-matrículas (para 2 filhos, "Rafael" e "Gabriel" Christianes) em um
+único checkout, gerando 2 linhas com o mesmo `Código da Venda`, mesmo SKU
+e mesmo link de acompanhamento, mas alunos diferentes.
 
 - **Chave de pedido:** `Código da Venda`. O valor do pedido é lido de
-  `Valor dos Itens` (valor do pedido), não somado por linha — evita
-  duplicar valor se um pedido futuro tiver múltiplos itens.
+  `Valor dos Itens` (valor do pedido, repetido em todas as linhas do mesmo
+  pedido), não somado por linha — evita duplicar valor quando um pedido
+  tem múltiplos itens/alunos. Por isso `Pedido` (tipo em `lib/types.ts`)
+  não guarda "o aluno" — guarda `itens[]`, e o KPI de alunos itera por
+  item, não por pedido.
 - **Chave de aluno:** não existe ID de aluno na fonte (o CPF do formulário é
   do responsável financeiro). A chave usada é `nome do aluno normalizado +
   data de nascimento normalizada`, extraídos do campo `Formulários`
-  (formato consistente nos 14 registros analisados: `aluno | nascimento |
-  responsável | telefone | série atual | série pretendida`). Quando isso
-  falha, cai para `responsável (nome + CPF)` e, em último caso, para o
-  próprio pedido — cada fallback gera um alerta no painel de qualidade de
-  dados.
+  (formato consistente em todos os registros analisados até agora: `aluno
+  | nascimento | responsável | telefone | série atual | série
+  pretendida`). Quando isso falha, cai para `responsável (nome + CPF)` e,
+  em último caso, para o próprio pedido — cada fallback gera um alerta no
+  painel de qualidade de dados. **Validação real desta chave:** o mesmo
+  aluno ("Breno Henrique Boaventura Barcellos casemiro", Tijuca) aparece
+  em 2 pedidos diferentes (uma tentativa `Vencido` às 10:30, uma tentativa
+  `Pago` às 12:09) — a chave nome+nascimento corretamente identifica as
+  duas linhas como o mesmo aluno, contando 1 (não 2) em "alunos com
+  pré-matrícula", enquanto ainda conta 2 em "pedidos" (2 transações
+  distintas de fato ocorreram).
 - **Unidade:** resolvida pelo campo `Nome do Canal` de cada linha (ex.:
   `"Bolsão 2027 - Tijuca"`), **não** pelo nome do arquivo.
 
@@ -98,8 +130,11 @@ venda de Américas mesmo vindo dentro do arquivo `Rocha Miranda_*.csv`. Como
 verificação adicional, o ETL registra um alerta (`unidade_reclassificada_por_canal`)
 sempre que o canal de uma linha diverge da unidade sugerida pelo nome do
 arquivo de origem — isso torna visível qualquer futura reclassificação, em
-vez de silenciosa. **Nos dados atuais (14 registros, extração de
-08/08/2026) não há nenhuma venda de Américas ainda** — a unidade aparece
+vez de silenciosa. O export consolidado "Matriz" também traz "Nome do
+Marketplace" como segundo sinal independente de unidade — se ele divergir
+do canal, o ETL gera `unidade_marketplace_canal_divergentes` em vez de
+decidir sozinho. **Nos dados atuais (52 registros, extração de 08/08/2026
+12:40) não há nenhuma venda de Américas ainda** — a unidade aparece
 corretamente com todos os indicadores zerados, e não há um exemplo real
 para validar a regra fim-a-fim; a lógica foi validada com um teste
 sintético (`scripts/check-edge-cases.ts`). **Ponto a validar quando a
@@ -110,13 +145,15 @@ alias em `UNITS` (`lib/units.ts`).
 
 ## Classificação do status de pagamento
 
-O campo `Status do Pagamento` é o status já resumido pela Layers no nível
-do pedido (não há arquivo de parcelas/repasses nesta fonte — diferente do
-pipeline de mensalidades recorrentes documentado em
-`documentacao_tecnica_data_engine.md`, que é uma fonte de dados diferente,
-via Parquet/S3). Valores confirmados nos dados atuais: `"Pago"` e
-`"Vencido"`. Os demais mapeamentos em `lib/status.ts`
-(Pendente/Cancelado/Estornado/Chargeback/Reembolsado etc.) foram
+O campo `Status do Pagamento` (export por unidade) / `Status da Venda`
+(export consolidado "Matriz" — mesmo conceito, nome de coluna diferente) é
+o status já resumido pela Layers no nível do pedido (não há arquivo de
+parcelas/repasses nesta fonte — diferente do pipeline de mensalidades
+recorrentes documentado em `documentacao_tecnica_data_engine.md`, que é
+uma fonte de dados diferente, via Parquet/S3). Valores confirmados nos
+dados atuais: `"Pago"`, `"Vencido"` e `"Em aberto"`. Os demais mapeamentos
+em `lib/status.ts` (Pendente/Cancelado/Estornado/Chargeback/Reembolsado
+etc.) foram
 antecipados a partir do vocabulário usado nos três documentos de referência
 lidos, **mas não confirmados nesta fonte específica** — qualquer status que
 não bata com o mapeamento cai em `"não classificado"` e é sinalizado no
@@ -129,7 +166,7 @@ automaticamente se não bater.
 
 | KPI | Definição | Fonte |
 |---|---|---|
-| Alunos com pré-matrícula | Alunos únicos (pela chave acima) com ao menos um pedido fora de `cancelado`/`estornado` | `lib/etl.ts::computeKpiForPedidos` |
+| Alunos com pré-matrícula | Alunos únicos (pela chave acima, **por item**, não por pedido — um pedido pode ter vários alunos) com ao menos um pedido fora de `cancelado`/`estornado` | `lib/etl.ts::computeKpiForPedidos` |
 | Pedidos | Contagem de `Código da Venda` únicos | idem |
 | Valor vendido | Soma do valor de todos os pedidos, qualquer status (bruto) | idem |
 | Valor pago | Soma dos pedidos com status "Pago" | idem |
@@ -147,23 +184,30 @@ O ETL gera um alerta estruturado (arquivo, linha, código do pedido,
 descrição) para cada uma destas situações, exibidas no painel inicial:
 
 `unidade_nao_identificada`, `unidade_reclassificada_por_canal`,
-`aluno_nao_identificado`, `aluno_e_responsavel_nao_identificados`,
-`valor_zero_ou_ausente`, `data_venda_invalida`, `formato_data_ambiguo`,
-`status_pagamento_ausente`, `status_nao_mapeado`, `linha_sem_codigo_venda`,
-`linha_duplicada`, `valor_pedido_inconsistente`, `pedido_com_alunos_divergentes`.
+`unidade_marketplace_canal_divergentes`, `aluno_nao_identificado`,
+`aluno_e_responsavel_nao_identificados`, `valor_zero_ou_ausente`,
+`data_venda_invalida`, `formato_data_ambiguo`, `status_pagamento_ausente`,
+`status_nao_mapeado`, `linha_sem_codigo_venda`, `linha_duplicada`,
+`valor_pedido_inconsistente`.
 
-Na carga usada para desenvolver este painel (5 arquivos, 14 registros,
-extração de 08/08/2026), **nenhum alerta foi disparado** — os dados estavam
+(Um pedido com mais de um aluno — ver seção acima — **não** é tratado como
+inconsistência: é um cenário de negócio válido e esperado.)
+
+Na carga mais recente (1 arquivo consolidado, 52 registros, extração de
+08/08/2026 12:40), **nenhum alerta foi disparado** — os dados estavam
 limpos. Isso não significa que a checagem foi pulada: os mesmos alertas
 disparam automaticamente em cargas futuras se qualquer uma dessas
-inconsistências aparecer.
+inconsistências aparecer. A deduplicação (`linha_duplicada`) usa uma chave
+que inclui o aluno (`Código da Venda + SKU + link + alunoKey`) exatamente
+para não confundir uma linha genuinamente repetida com um pedido legítimo
+de múltiplos alunos que compartilha SKU e link (caso Christianes acima).
 
 ### Hipótese de formato de data assumida (verificar em novas cargas)
 
 O campo `Data da Venda` vem como `"8/8/2026, 11:14"`. Foi adotada a
 hipótese `mês/dia/ano` (padrão en-US, compatível com
 `Date.toLocaleString('en-US')`, que é o formato mais provável de origem do
-export). Como todos os 14 registros disponíveis são do mesmo dia
+export). Como todos os 52 registros disponíveis até agora são do mesmo dia
 (08/08/2026), não há como confirmar isso pelos dados atuais — se em uma
 carga futura aparecer uma data cujo primeiro número seja maior que 12 (ex.:
 `25/1/2026`), o parser não consegue interpretar da forma esperada e o ETL
@@ -191,14 +235,19 @@ npm run check-edge-cases   # valida a lógica de unidade/status/data/moeda com c
 
 ## Como atualizar os dados
 
-1. Coloque os novos exports CSV da Layers na pasta raiz do projeto
-   (`Bolsão Matriz 2027/`, um nível acima deste diretório) — pode
-   substituir os arquivos antigos ou adicionar novos, um por unidade.
+1. Coloque o(s) novo(s) export(s) CSV da Layers na pasta raiz do projeto
+   (`Bolsão Matriz 2027/`, um nível acima deste diretório) — pode ser o
+   export consolidado "Matriz" (recomendado, um arquivo só) ou os exports
+   por unidade. Remova da pasta raiz os arquivos que não deveriam mais
+   valer (ex.: um export por unidade já substituído pelo consolidado).
 2. Rode:
    ```bash
    npm run sync-data
    ```
-   Isso copia os `.csv` da pasta raiz para `data/raw/`, de onde o painel lê.
+   Isso **espelha** a pasta raiz em `data/raw/`: copia os `.csv`
+   presentes e remove de `data/raw/` qualquer arquivo que não exista mais
+   na pasta raiz (evita alertas de "linha duplicada" por cópias antigas
+   esquecidas).
 3. Confira os números antes de publicar:
    ```bash
    npm run check-etl
@@ -226,10 +275,12 @@ necessária — é um projeto Next.js padrão).
 
 1. **Américas:** nenhuma venda real disponível ainda para confirmar que o
    texto do canal usado pela Layers bate com o esperado (`"Américas"`).
-2. **Status de pagamento além de "Pago"/"Vencido":** os demais valores do
-   mapeamento em `lib/status.ts` foram antecipados a partir de documentação
-   de um pipeline de dados diferente (mensalidades recorrentes), não desta
-   fonte. Confirmar assim que aparecerem cancelamentos/estornos reais.
+2. **Status de pagamento além de "Pago"/"Vencido"/"Em aberto":** os demais
+   valores do mapeamento em `lib/status.ts` (Cancelado, Estornado,
+   Chargeback, Reembolsado etc.) foram antecipados a partir de
+   documentação de um pipeline de dados diferente (mensalidades
+   recorrentes), não desta fonte. Confirmar assim que aparecerem
+   cancelamentos/estornos reais.
 3. **Hipótese de formato de data (mês/dia/ano):** não confirmável com os
    dados atuais (todos do mesmo dia). O painel de qualidade de dados avisa
    automaticamente se uma data futura contradisser a hipótese.

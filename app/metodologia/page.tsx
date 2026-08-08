@@ -45,10 +45,17 @@ export default function MetodologiaPage() {
 
       <Section title="Granularidade e chaves adotadas">
         <p>
-          <strong>Pedido/venda:</strong> chave = &ldquo;Código da Venda&rdquo;. Se um pedido
-          tiver múltiplas linhas de item no futuro, o valor do pedido é lido de &ldquo;Valor dos
-          Itens&rdquo; (valor do pedido) e não da soma das linhas — evita contar o mesmo pedido
-          em dobro.
+          <strong>Pedido/venda:</strong> chave = &ldquo;Código da Venda&rdquo;. O valor do
+          pedido é lido de &ldquo;Valor dos Itens&rdquo; (valor do pedido, repetido em todas as
+          linhas) e não somado por linha — evita contar o mesmo pedido em dobro.
+        </p>
+        <p>
+          <strong>Um pedido pode ter mais de um aluno:</strong> caso real já observado — um
+          responsável comprou 2 pré-matrículas (2 filhos) em um único checkout, gerando 2 linhas
+          com o mesmo código de pedido. O valor financeiro do pedido continua contado uma única
+          vez; a tabela de alunos mostra os 2 filhos como registros separados, com o valor
+          dividido proporcionalmente para não parecer que a soma da coluna é maior que o
+          realmente cobrado.
         </p>
         <p>
           <strong>Aluno:</strong> não existe um ID de aluno na fonte — o CPF do formulário
@@ -56,7 +63,10 @@ export default function MetodologiaPage() {
           <em>nome do aluno + data de nascimento</em>, extraídos do campo de formulário da
           venda. Quando isso não é possível, o painel cai para responsável (nome + CPF) e, em
           último caso, para o próprio pedido — cada uma dessas exceções aparece no painel de
-          qualidade de dados.
+          qualidade de dados. Essa chave já foi validada num caso real: o mesmo aluno apareceu em
+          2 pedidos (uma tentativa vencida e uma paga depois) e foi corretamente contado como 1
+          aluno, não 2, em &ldquo;alunos com pré-matrícula&rdquo; — mas como 2 pedidos, já que
+          duas transações de fato existiram.
         </p>
         <p>
           <strong>Unidade:</strong> resolvida pelo canal de venda de cada linha (ex.:

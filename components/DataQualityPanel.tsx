@@ -17,7 +17,7 @@ const TIPO_LABEL: Record<string, string> = {
   linha_sem_codigo_venda: "Linha sem código de venda",
   linha_duplicada: "Linha duplicada entre exportações",
   valor_pedido_inconsistente: "Valor divergente entre linhas do mesmo pedido",
-  pedido_com_alunos_divergentes: "Pedido com alunos divergentes entre linhas",
+  unidade_marketplace_canal_divergentes: "Canal e Marketplace apontam para unidades diferentes",
 };
 
 export function DataQualityPanel({ issues }: { issues: DataQualityIssue[] }) {

@@ -47,7 +47,30 @@ const RAW_DATA_DIR = path.join(process.cwd(), "data", "raw");
  * - UNIDADE: resolvida pelo campo "Nome do Canal" de cada linha (não pelo
  *   nome do arquivo de origem) — ver identifyUnitByChannel em units.ts.
  *   Isso é o que permite separar corretamente Américas de Rocha Miranda
- *   mesmo que ambas venham no mesmo arquivo/exportação.
+ *   mesmo que ambas venham no mesmo arquivo/exportação. O export
+ *   consolidado "Matriz" traz um segundo campo independente, "Nome do
+ *   Marketplace" (ex.: "Matriz Educação Campo Grande - Bolsão 2027"), que
+ *   é usado como checagem cruzada: se ele apontar para uma unidade
+ *   diferente da resolvida por "Nome do Canal", a linha gera o alerta
+ *   `unidade_marketplace_canal_divergentes` em vez de decidir por um dos
+ *   dois silenciosamente — isso é útil sobretudo para validar Américas
+ *   quando a primeira venda real aparecer.
+ *
+ * - PEDIDO COM MÚLTIPLOS ALUNOS: um mesmo "Código da Venda" pode conter
+ *   mais de um item/aluno (ex.: responsável compra pré-matrícula para 2
+ *   filhos em um único checkout — confirmado nos dados em 08/08/2026,
+ *   pedido LP1-MHPM3-AM7J4). Nesse caso "Valor dos Itens" já vem como o
+ *   total do pedido (repetido em cada linha) — o valor financeiro do
+ *   pedido é contado 1x (nunca por item), mas cada linha é um aluno
+ *   diferente e TODOS contam para "alunos com pré-matrícula". Por isso
+ *   `Pedido` não guarda "o aluno" — guarda `itens`, e quem precisa do
+ *   aluno itera por item.
+ *
+ * - COLUNAS COM NOMES DIFERENTES ENTRE FORMATOS DE EXPORT: o export por
+ *   unidade usa "Status do Pagamento"; o export consolidado "Matriz" usa
+ *   "Status da Venda" para o mesmo conceito (mesmos valores possíveis,
+ *   como "Pago"/"Em aberto"). O parser lê os dois nomes de coluna,
+ *   preferindo "Status do Pagamento" quando ambos existirem.
  */
 
 interface RawRow {
@@ -155,6 +178,18 @@ function processFile(
       });
     }
 
+    const nomeMarketplace = (row["Nome do Marketplace"] || "").trim();
+    const unitFromMarketplace = identifyUnitByChannel(nomeMarketplace);
+    if (unit && unitFromMarketplace && unit.slug !== unitFromMarketplace.slug) {
+      issues.push({
+        tipo: "unidade_marketplace_canal_divergentes",
+        descricao: `"Nome do Canal" indica "${unit.nome}", mas "Nome do Marketplace" ("${nomeMarketplace}") indica "${unitFromMarketplace.nome}". Mantida a classificação por canal; revisar manualmente.`,
+        arquivoOrigem: fileName,
+        linha,
+        codigoVenda,
+      });
+    }
+
     const valorItem = parseMoney(row["Valor do Item na Venda"]);
     const valorItens = parseMoney(row["Valor dos Itens"]);
     if (valorItens <= 0) {
@@ -188,11 +223,16 @@ function processFile(
       });
     }
 
-    const statusPagamentoRaw = (row["Status do Pagamento"] || "").trim();
+    // "Status do Pagamento" (export por unidade) e "Status da Venda" (export
+    // consolidado "Matriz") são o mesmo conceito com nomes de coluna
+    // diferentes — ver nota no topo do arquivo.
+    const statusPagamentoRaw = (
+      row["Status do Pagamento"] || row["Status da Venda"] || ""
+    ).trim();
     if (!statusPagamentoRaw) {
       issues.push({
         tipo: "status_pagamento_ausente",
-        descricao: "Status do Pagamento vazio.",
+        descricao: "Status do Pagamento/Status da Venda vazio.",
         arquivoOrigem: fileName,
         linha,
         codigoVenda,
@@ -272,6 +312,9 @@ function processFile(
       formulariosRaw,
       alunoKey,
       linkAcompanhamento: (row["Link de Acompanhamento"] || "").trim(),
+      categoria: (row["Categoria"] || "").trim(),
+      nomeMarketplace,
+      codigoPedidoAlt: (row["Código do Pedido"] || "").trim() || null,
     });
   });
 
@@ -282,9 +325,15 @@ function dedupeItems(
   items: ItemVenda[],
   issues: DataQualityIssue[],
 ): ItemVenda[] {
+  // A chave inclui alunoKey para não confundir uma linha genuinamente
+  // duplicada (mesmo pedido re-exportado) com um pedido legítimo de
+  // múltiplos alunos que compartilha SKU e link de acompanhamento (ex.:
+  // gêmeos comprados no mesmo checkout — caso real: pedido
+  // LP1-MHPM3-AM7J4, "Rafael" e "Gabriel" Christianes). Sem alunoKey na
+  // chave, esse caso seria colapsado incorretamente em 1 aluno só.
   const seen = new Map<string, ItemVenda>();
   for (const item of items) {
-    const key = `${item.codigoVenda}::${item.skuItem || item.nomeItem}::${item.linkAcompanhamento}`;
+    const key = `${item.codigoVenda}::${item.skuItem || item.nomeItem}::${item.linkAcompanhamento}::${item.alunoKey}`;
     if (seen.has(key)) {
       issues.push({
         tipo: "linha_duplicada",
@@ -325,16 +374,10 @@ function buildPedidos(
         codigoVenda,
       });
     }
-    const alunoKeys = new Set(groupItems.map((i) => i.alunoKey));
-    if (alunoKeys.size > 1) {
-      issues.push({
-        tipo: "pedido_com_alunos_divergentes",
-        descricao: `O pedido ${codigoVenda} tem linhas apontando para alunos diferentes. Usando o aluno da primeira linha.`,
-        arquivoOrigem: first.arquivoOrigem,
-        linha: first.linhaOrigem,
-        codigoVenda,
-      });
-    }
+    // Nota: um pedido pode legitimamente ter mais de um aluno (checkout
+    // único com N pré-matrículas — ver docstring no topo do arquivo). Isso
+    // não é tratado como inconsistência; cada item mantém seu próprio
+    // aluno e quem precisa do aluno itera `pedido.itens`.
 
     pedidos.push({
       codigoVenda,
@@ -346,8 +389,6 @@ function buildPedidos(
       statusPagamentoRaw: first.statusPagamentoRaw,
       metodoPagamento: first.metodoPagamento,
       numeroParcelas: first.numeroParcelas,
-      alunoKey: first.alunoKey,
-      alunoNome: first.alunoNome,
       itens: groupItems,
     });
   }
@@ -381,7 +422,9 @@ function computeKpiForPedidos(slug: string, nome: string, pedidos: Pedido[]): Un
   for (const pedido of pedidos) {
     kpi.valorVendidoBruto += pedido.valorPedido;
     if (pedido.statusBucket !== "cancelado" && pedido.statusBucket !== "estornado") {
-      alunosValidos.add(pedido.alunoKey);
+      for (const item of pedido.itens) {
+        alunosValidos.add(item.alunoKey);
+      }
     }
     switch (pedido.statusBucket) {
       case "pago":

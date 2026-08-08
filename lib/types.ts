@@ -71,9 +71,21 @@ export interface ItemVenda {
   alunoKey: string;
 
   linkAcompanhamento: string;
+
+  // Campos vistos apenas no export consolidado "Matriz" (ver lib/etl.ts)
+  categoria: string;
+  nomeMarketplace: string;
+  codigoPedidoAlt: string | null;
 }
 
-/** Um pedido (venda) já deduplicado a partir de N linhas de item. */
+/**
+ * Um pedido (venda), agrupado por "Código da Venda". Um pedido pode conter
+ * MAIS DE UM aluno (checkout único com N pré-matrículas, uma por filho) —
+ * por isso o pedido não tem "o aluno", e sim uma lista de itens, cada um
+ * com seu próprio aluno. Os campos financeiros/de pagamento (valor,
+ * status, data, método) são do PEDIDO (repetidos em todas as linhas do
+ * mesmo Código da Venda na fonte) — nunca somar por item para não duplicar.
+ */
 export interface Pedido {
   codigoVenda: string;
   unidadeSlug: string | null;
@@ -84,8 +96,6 @@ export interface Pedido {
   statusPagamentoRaw: string;
   metodoPagamento: string;
   numeroParcelas: number | null;
-  alunoKey: string;
-  alunoNome: string | null;
   itens: ItemVenda[];
 }
 

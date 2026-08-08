@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
-import type { Pedido, StatusBucket } from "@/lib/types";
+import type { ItemVenda, Pedido, StatusBucket } from "@/lib/types";
 import { formatBRL, formatDateBR, formatDateTimeBR } from "@/lib/normalize";
 import { STATUS_BUCKET_LABEL } from "@/lib/status";
 import { StatusPill } from "./StatusPill";
@@ -11,11 +11,40 @@ type SortKey = "data" | "aluno" | "valor" | "status";
 
 const PAGE_SIZE = 50;
 
+/** Uma linha da tabela = um aluno (um item dentro de um pedido). Um pedido
+ * com N alunos gera N linhas — ver docstring sobre pedidos multi-aluno em
+ * lib/etl.ts. */
+interface Row {
+  pedido: Pedido;
+  item: ItemVenda;
+  /** valor exibido para este aluno: valor do pedido dividido pelo número de
+   * alunos do mesmo pedido, para não sugerir que a soma da coluna é maior
+   * que o valor realmente cobrado. */
+  valorRateado: number;
+  totalAlunosNoPedido: number;
+}
+
 function normalize(value: string): string {
   return value
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
+}
+
+function buildRows(pedidos: Pedido[]): Row[] {
+  const rows: Row[] = [];
+  for (const pedido of pedidos) {
+    const total = pedido.itens.length || 1;
+    for (const item of pedido.itens) {
+      rows.push({
+        pedido,
+        item,
+        valorRateado: pedido.valorPedido / total,
+        totalAlunosNoPedido: total,
+      });
+    }
+  }
+  return rows;
 }
 
 export function StudentsTable({
@@ -35,27 +64,28 @@ export function StudentsTable({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
+  const allRows = useMemo(() => buildRows(pedidos), [pedidos]);
+
   const filtered = useMemo(() => {
     const term = normalize(search.trim());
-    return pedidos.filter((pedido) => {
+    return allRows.filter(({ pedido, item }) => {
       if (statusFilter !== "todos" && pedido.statusBucket !== statusFilter) return false;
       if (unidadeFilter !== "todas" && pedido.unidadeSlug !== unidadeFilter) return false;
       if (!term) return true;
-      const item = pedido.itens[0];
       const haystack = normalize(
         [
-          pedido.alunoNome ?? "",
-          item?.alunoResponsavelNome ?? "",
-          item?.clienteNome ?? "",
-          item?.clienteEmail ?? "",
-          item?.clienteCpf ?? "",
+          item.alunoNome ?? "",
+          item.alunoResponsavelNome ?? "",
+          item.clienteNome ?? "",
+          item.clienteEmail ?? "",
+          item.clienteCpf ?? "",
           pedido.codigoVenda,
           pedido.unidadeNome ?? "",
         ].join(" "),
       );
       return haystack.includes(term);
     });
-  }, [pedidos, search, statusFilter, unidadeFilter]);
+  }, [allRows, search, statusFilter, unidadeFilter]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -63,16 +93,16 @@ export function StudentsTable({
       let cmp = 0;
       switch (sortKey) {
         case "data":
-          cmp = (a.dataVenda?.getTime() ?? 0) - (b.dataVenda?.getTime() ?? 0);
+          cmp = (a.pedido.dataVenda?.getTime() ?? 0) - (b.pedido.dataVenda?.getTime() ?? 0);
           break;
         case "aluno":
-          cmp = (a.alunoNome ?? "").localeCompare(b.alunoNome ?? "", "pt-BR");
+          cmp = (a.item.alunoNome ?? "").localeCompare(b.item.alunoNome ?? "", "pt-BR");
           break;
         case "valor":
-          cmp = a.valorPedido - b.valorPedido;
+          cmp = a.valorRateado - b.valorRateado;
           break;
         case "status":
-          cmp = a.statusBucket.localeCompare(b.statusBucket);
+          cmp = a.pedido.statusBucket.localeCompare(b.pedido.statusBucket);
           break;
       }
       return sortDir === "asc" ? cmp : -cmp;
@@ -91,11 +121,15 @@ export function StudentsTable({
     }
   }
 
-  function toggleExpand(codigo: string) {
+  function rowKey(row: Row): string {
+    return `${row.item.arquivoOrigem}::${row.item.linhaOrigem}`;
+  }
+
+  function toggleExpand(key: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(codigo)) next.delete(codigo);
-      else next.add(codigo);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -154,7 +188,7 @@ export function StudentsTable({
           ))}
         </select>
 
-        <span className="text-xs text-ink-3">
+        <span className="text-xs text-ink-3" title="Uma linha por aluno/pedido — pode diferir do KPI 'Alunos com pré-matrícula', que deduplica o mesmo aluno em múltiplas tentativas de compra.">
           {filtered.length} {filtered.length === 1 ? "registro" : "registros"}
         </span>
       </div>
@@ -179,16 +213,14 @@ export function StudentsTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((pedido) => {
-              const item = pedido.itens[0];
-              const isOpen = expanded.has(pedido.codigoVenda);
+            {visible.map((row) => {
+              const key = rowKey(row);
               return (
                 <FragmentRow
-                  key={pedido.codigoVenda}
-                  pedido={pedido}
-                  item={item}
-                  isOpen={isOpen}
-                  onToggle={() => toggleExpand(pedido.codigoVenda)}
+                  key={key}
+                  row={row}
+                  isOpen={expanded.has(key)}
+                  onToggle={() => toggleExpand(key)}
                   showUnidadeColumn={showUnidadeColumn}
                 />
               );
@@ -254,18 +286,19 @@ function SortableHeader({
 }
 
 function FragmentRow({
-  pedido,
-  item,
+  row,
   isOpen,
   onToggle,
   showUnidadeColumn,
 }: {
-  pedido: Pedido;
-  item: Pedido["itens"][number] | undefined;
+  row: Row;
   isOpen: boolean;
   onToggle: () => void;
   showUnidadeColumn: boolean;
 }) {
+  const { pedido, item, valorRateado, totalAlunosNoPedido } = row;
+  const outrosAlunos = pedido.itens.filter((i) => i !== item);
+
   return (
     <>
       <tr className="border-b border-line-soft last:border-0 hover:bg-paper-2">
@@ -280,7 +313,7 @@ function FragmentRow({
           </button>
         </td>
         <td className="px-4 py-3 font-medium text-ink">
-          {pedido.alunoNome ?? <span className="italic text-ink-3">não identificado</span>}
+          {item.alunoNome ?? <span className="italic text-ink-3">não identificado</span>}
         </td>
         {showUnidadeColumn ? (
           <td className="px-4 py-3 text-ink-2">
@@ -289,23 +322,29 @@ function FragmentRow({
             )}
           </td>
         ) : null}
-        <td className="px-4 py-3 text-ink-2">{item?.seriePretendida ?? "—"}</td>
+        <td className="px-4 py-3 text-ink-2">{item.seriePretendida ?? "—"}</td>
         <td className="px-4 py-3 text-right tabular-nums text-ink-2">
           {formatDateBR(pedido.dataVenda)}
         </td>
         <td className="px-4 py-3 text-right tabular-nums font-medium text-ink">
-          {formatBRL(pedido.valorPedido)}
+          {formatBRL(valorRateado)}
+          {totalAlunosNoPedido > 1 ? (
+            <span className="ml-1 text-[10px] font-normal text-ink-3">
+              (1/{totalAlunosNoPedido} do pedido)
+            </span>
+          ) : null}
         </td>
         <td className="px-4 py-3">
           <StatusPill status={pedido.statusBucket} />
         </td>
       </tr>
-      {isOpen && item ? (
+      {isOpen ? (
         <tr className="border-b border-line-soft bg-paper-2/60 last:border-0">
           <td />
           <td colSpan={showUnidadeColumn ? 6 : 5} className="px-4 py-4">
             <div className="grid grid-cols-1 gap-x-8 gap-y-2 text-xs text-ink-2 sm:grid-cols-2 lg:grid-cols-3">
               <Detail label="Código do pedido" value={pedido.codigoVenda} mono />
+              <Detail label="Código do pedido (alt.)" value={item.codigoPedidoAlt ?? "—"} mono />
               <Detail label="ID da transação" value={item.transacaoId ?? "—"} mono />
               <Detail label="Produto" value={item.nomeItem || "—"} />
               <Detail
@@ -314,6 +353,10 @@ function FragmentRow({
               />
               <Detail label="Série atual" value={item.serieAtual ?? "—"} />
               <Detail label="Série pretendida (2027)" value={item.seriePretendida ?? "—"} />
+              <Detail
+                label="Valor total do pedido"
+                value={`${formatBRL(pedido.valorPedido)}${totalAlunosNoPedido > 1 ? ` (dividido entre ${totalAlunosNoPedido} alunos)` : ""}`}
+              />
               <Detail
                 label="Método de pagamento"
                 value={`${item.metodoPagamento || "—"}${item.bandeiraCartao ? ` (${item.bandeiraCartao})` : ""}${item.numeroParcelas ? ` · ${item.numeroParcelas}x` : ""}`}
@@ -326,6 +369,14 @@ function FragmentRow({
               <Detail label="CPF do responsável" value={item.clienteCpf || "—"} mono />
               <Detail label="Endereço" value={item.clienteEndereco || "—"} className="sm:col-span-2 lg:col-span-3" />
               <Detail label="Unidade (canal original)" value={item.canalOriginal || "—"} />
+              <Detail label="Unidade (marketplace)" value={item.nomeMarketplace || "—"} />
+              {outrosAlunos.length > 0 ? (
+                <Detail
+                  label="Outros alunos neste mesmo pedido"
+                  value={outrosAlunos.map((i) => i.alunoNome ?? "não identificado").join(", ")}
+                  className="sm:col-span-2 lg:col-span-3"
+                />
+              ) : null}
               <Detail label="Arquivo de origem" value={`${item.arquivoOrigem} · linha ${item.linhaOrigem}`} mono className="sm:col-span-2 lg:col-span-3" />
             </div>
           </td>

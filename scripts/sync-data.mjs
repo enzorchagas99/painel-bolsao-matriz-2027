@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-// Copia os CSVs "*_itens_da_venda_*.csv" da pasta raiz do projeto
-// (um nível acima deste app) para data/raw/, de onde o painel os lê.
+// Sincroniza (espelha) os CSVs da pasta raiz do projeto (um nível acima
+// deste app) para data/raw/, de onde o painel os lê. "Sincronizar" aqui
+// significa espelhar de verdade: arquivos removidos da pasta raiz também
+// são removidos de data/raw/ (ex.: quando um export por unidade é
+// substituído por um export consolidado "Matriz" mais completo) — isso
+// evita que o painel de qualidade de dados fique cheio de alertas de
+// "linha duplicada" por causa de cópias antigas esquecidas.
 //
 // Uso:
 //   npm run sync-data
@@ -19,19 +24,30 @@ const targetDir = path.join(appRoot, "data", "raw");
 
 fs.mkdirSync(targetDir, { recursive: true });
 
-const files = fs
+const sourceFiles = fs
   .readdirSync(sourceDir)
   .filter((f) => f.toLowerCase().endsWith(".csv"));
 
-if (files.length === 0) {
+if (sourceFiles.length === 0) {
   console.error(`Nenhum arquivo .csv encontrado em ${sourceDir}`);
   process.exit(1);
 }
 
-for (const file of files) {
+const existingTargetFiles = fs
+  .readdirSync(targetDir)
+  .filter((f) => f.toLowerCase().endsWith(".csv"));
+
+for (const file of existingTargetFiles) {
+  if (!sourceFiles.includes(file)) {
+    fs.unlinkSync(path.join(targetDir, file));
+    console.log(`Removido (não existe mais na origem): ${file}`);
+  }
+}
+
+for (const file of sourceFiles) {
   fs.copyFileSync(path.join(sourceDir, file), path.join(targetDir, file));
   console.log(`Copiado: ${file}`);
 }
 
-console.log(`\n${files.length} arquivo(s) sincronizado(s) em ${targetDir}`);
+console.log(`\n${sourceFiles.length} arquivo(s) sincronizado(s) em ${targetDir}`);
 console.log("Rode `npm run check-etl` para conferir os números antes de publicar.");
