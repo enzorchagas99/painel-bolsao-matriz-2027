@@ -1,26 +1,73 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #fdfbf6;
+  --paper-2: #f6f2ea;
+  --ink: #1f2a2b;
+  --ink-2: #3f5050;
+  --ink-3: #6b7a7a;
+  --line: #e6e2db;
+  --line-soft: #efece5;
+
+  --brand-orange: #e8862a;
+  --brand-orange-dark: #c96f18;
+  --brand-orange-soft: #fbe9d3;
+  --brand-teal: #5eb7b2;
+  --brand-teal-dark: #3d8f8a;
+  --brand-teal-soft: #d6ecea;
+
+  --sem-blue: #3e87e0;
+  --sem-blue-soft: #dceafa;
+  --sem-green: #2c7a5a;
+  --sem-green-soft: #d4e7dc;
+  --sem-red: #c9453b;
+  --sem-red-soft: #f6d9d5;
+  --sem-purple: #7a3fa0;
+  --sem-purple-soft: #e7d9f0;
+
+  --shadow-soft: 0 1px 0 rgba(0, 0, 0, 0.04), 0 6px 20px rgba(20, 30, 40, 0.06);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-orange-dark: var(--brand-orange-dark);
+  --color-brand-orange-soft: var(--brand-orange-soft);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-teal-dark: var(--brand-teal-dark);
+  --color-brand-teal-soft: var(--brand-teal-soft);
+
+  --color-sem-blue: var(--sem-blue);
+  --color-sem-blue-soft: var(--sem-blue-soft);
+  --color-sem-green: var(--sem-green);
+  --color-sem-green-soft: var(--sem-green-soft);
+  --color-sem-red: var(--sem-red);
+  --color-sem-red-soft: var(--sem-red-soft);
+  --color-sem-purple: var(--sem-purple);
+  --color-sem-purple-soft: var(--sem-purple-soft);
+
+  --font-display: var(--font-montserrat);
+  --font-body: var(--font-inter);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+::selection {
+  background: var(--brand-orange-soft);
+  color: var(--brand-orange-dark);
 }
