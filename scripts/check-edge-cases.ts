@@ -1,6 +1,53 @@
 import { identifyUnitByChannel } from "../lib/units";
 import { classifyStatus } from "../lib/status";
 import { parseMoney, parseDataVenda, dataVendaFormatoAmbiguo } from "../lib/normalize";
+import { dropSupersededPendingItems } from "../lib/etl";
+import type { ItemVenda, DataQualityIssue } from "../lib/types";
+
+function fakeItem(overrides: Partial<ItemVenda>): ItemVenda {
+  return {
+    arquivoOrigem: "teste.csv",
+    linhaOrigem: 1,
+    codigoVenda: "LP1-TEST",
+    transacaoId: null,
+    unidadeSlug: "tijuca",
+    unidadeNome: "Tijuca",
+    canalOriginal: "Bolsão 2027 - Tijuca",
+    nomeItem: "Pré-Matrícula Bolsão 2027",
+    skuItem: "#TEST",
+    quantidade: 1,
+    valorItem: 300,
+    valorItens: 300,
+    valorFrete: 0,
+    valorDescontos: 0,
+    valorJuros: 0,
+    dataVendaRaw: "8/8/2026, 10:00",
+    dataVenda: new Date(2026, 7, 8, 10, 0),
+    statusPagamentoRaw: "Pago",
+    statusBucket: "pago",
+    metodoPagamento: "Pix",
+    bandeiraCartao: "",
+    numeroParcelas: 1,
+    clienteNome: "Responsavel Teste",
+    clienteEmail: "teste@example.com",
+    clienteTelefone: "21999999999",
+    clienteCpf: "000.000.000-00",
+    clienteEndereco: "Rua Teste, 1",
+    alunoNome: "Aluno Teste",
+    alunoDataNascimentoRaw: "01/01/2015",
+    alunoResponsavelNome: "Responsavel Teste",
+    alunoResponsavelTelefone: "21999999999",
+    serieAtual: "5 ano",
+    seriePretendida: "6 ano",
+    formulariosRaw: "",
+    alunoKey: "aluno:aluno teste|2015-01-01",
+    linkAcompanhamento: "",
+    categoria: "Bolsão",
+    nomeMarketplace: "",
+    codigoPedidoAlt: null,
+    ...overrides,
+  };
+}
 
 function assertEq(label: string, actual: unknown, expected: unknown) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
@@ -48,5 +95,51 @@ assertEq(
 );
 assertEq("data ambigua (dia=25 no 1o componente)", dataVendaFormatoAmbiguo("25/1/2026, 10:00"), true);
 assertEq("data nao ambigua", dataVendaFormatoAmbiguo("8/8/2026, 11:14"), false);
+
+// Regra: mesmo aluno com pedido vencido + pedido pago -> descarta o vencido
+{
+  const issues: DataQualityIssue[] = [];
+  const items = [
+    fakeItem({ codigoVenda: "LP1-VENCIDO", statusBucket: "pendente_vencido", statusPagamentoRaw: "Vencido" }),
+    fakeItem({ codigoVenda: "LP1-PAGO", statusBucket: "pago", statusPagamentoRaw: "Pago" }),
+  ];
+  const result = dropSupersededPendingItems(items, issues);
+  assertEq(
+    "vencido substituido por pago: mantém só o pago",
+    result.map((i) => i.codigoVenda),
+    ["LP1-PAGO"],
+  );
+  assertEq("vencido substituido por pago: gera alerta", issues.length, 1);
+}
+
+// Regra: aluno só com pedido vencido (sem pago) -> NÃO descarta
+{
+  const issues: DataQualityIssue[] = [];
+  const items = [
+    fakeItem({ codigoVenda: "LP1-SOVENCIDO", statusBucket: "pendente_vencido", statusPagamentoRaw: "Vencido" }),
+  ];
+  const result = dropSupersededPendingItems(items, issues);
+  assertEq(
+    "vencido sem pago correspondente: mantém",
+    result.map((i) => i.codigoVenda),
+    ["LP1-SOVENCIDO"],
+  );
+  assertEq("vencido sem pago correspondente: sem alerta", issues.length, 0);
+}
+
+// Regra: alunos diferentes não se afetam entre si
+{
+  const issues: DataQualityIssue[] = [];
+  const items = [
+    fakeItem({ codigoVenda: "LP1-A-VENCIDO", alunoKey: "aluno:a|2015-01-01", statusBucket: "pendente_vencido" }),
+    fakeItem({ codigoVenda: "LP1-B-PAGO", alunoKey: "aluno:b|2016-02-02", statusBucket: "pago" }),
+  ];
+  const result = dropSupersededPendingItems(items, issues);
+  assertEq(
+    "alunos diferentes não interferem entre si",
+    result.map((i) => i.codigoVenda).sort(),
+    ["LP1-A-VENCIDO", "LP1-B-PAGO"],
+  );
+}
 
 console.log("\nEdge cases concluídos.");

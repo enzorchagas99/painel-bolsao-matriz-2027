@@ -162,12 +162,43 @@ quando aparecerem os primeiros `"Cancelado"`/`"Estornado"` reais, conferir
 se o texto exato bate com o mapeamento em `lib/status.ts` — o painel avisa
 automaticamente se não bater.
 
+## Tentativa vencida substituída por pagamento posterior
+
+Regra de negócio explícita: quando o **mesmo aluno** (mesma chave
+nome+nascimento) tem um pedido `pendente/vencido` e outro pedido `pago`,
+o pedido pendente/vencido é **descartado por completo** — não entra em
+"Pedidos", "Valor vendido", "Valor pendente" nem na tabela de alunos.
+Ele é tratado como uma tentativa de checkout abandonada/expirada,
+substituída pela matrícula paga, e não como uma venda adicional. O
+descarte é registrado como alerta `pedido_pendente_substituido_por_pago`
+no painel de qualidade de dados (arquivo, linha e código do pedido
+descartado ficam visíveis para auditoria).
+
+Caso real que motivou a regra: aluno "Breno Henrique Boaventura Barcellos
+casemiro" (Tijuca) tinha um pedido `Vencido` às 10:30 e outro `Pago` às
+12:09 no mesmo dia (08/08/2026) — sem esta regra, o pedido vencido ainda
+contava em "Pedidos" e "Pendente/vencido" mesmo depois do pagamento ter
+sido concluído.
+
+**Escopo deliberadamente limitado:** a regra só descarta
+`pendente_vencido` quando há um `pago` do mesmo aluno. Pedidos
+`cancelado`/`estornado` do mesmo aluno **não** são descartados por esta
+regra — permanecem visíveis como histórico de cancelamento/estorno. Um
+aluno com `pendente_vencido` e **sem** nenhum pedido pago continua
+aparecendo normalmente (ex.: caso real "Lara Valentina da Silva" em Rocha
+Miranda — não descartado, pois seu único pedido está em aberto; note que
+há um segundo registro parecido, "Lara Valentina Da Silva Rodrigues", pago,
+com a mesma data de nascimento — mas com nome ligeiramente diferente o
+suficiente para não bater na chave exata nome+nascimento; **ponto a
+revisar manualmente**, já que pode ser a mesma criança com uma variação de
+grafia do sobrenome).
+
 ## Critérios dos KPIs
 
 | KPI | Definição | Fonte |
 |---|---|---|
-| Alunos com pré-matrícula | Alunos únicos (pela chave acima, **por item**, não por pedido — um pedido pode ter vários alunos) com ao menos um pedido fora de `cancelado`/`estornado` | `lib/etl.ts::computeKpiForPedidos` |
-| Pedidos | Contagem de `Código da Venda` únicos | idem |
+| Alunos com pré-matrícula | Alunos únicos (pela chave acima, **por item**, não por pedido — um pedido pode ter vários alunos) com ao menos um pedido fora de `cancelado`/`estornado`, após o descarte de pendentes substituídos (ver seção acima) | `lib/etl.ts::computeKpiForPedidos` |
+| Pedidos | Contagem de `Código da Venda` únicos, após o descarte de pendentes substituídos | idem |
 | Valor vendido | Soma do valor de todos os pedidos, qualquer status (bruto) | idem |
 | Valor pago | Soma dos pedidos com status "Pago" | idem |
 | Pendente/vencido, Cancelado, Estornado | Soma por bucket de status | idem |
@@ -286,3 +317,12 @@ necessária — é um projeto Next.js padrão).
    automaticamente se uma data futura contradisser a hipótese.
 4. **Decisão de acesso sem autenticação:** ver seção no topo deste README —
    registrada como decisão de negócio explícita, não uma omissão técnica.
+5. **Possível duplicidade não auto-resolvida ("Lara Valentina"):** dois
+   registros em Rocha Miranda têm a mesma data de nascimento
+   (21/07/2018) e nomes quase idênticos ("Lara Valentina Da Silva
+   Rodrigues", pago, e "Lara Valentina da Silva", em aberto) — a chave
+   exata nome+nascimento não os une por causa da diferença de sobrenome, e
+   por isso a regra de "vencido substituído por pago" não se aplicou aqui.
+   Requer checagem manual da equipe para confirmar se é a mesma criança
+   (nesse caso, o pedido em aberto deveria ser descartado manualmente) ou
+   duas famílias diferentes com coincidência de nome e data.

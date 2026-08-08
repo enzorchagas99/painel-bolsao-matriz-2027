@@ -63,10 +63,17 @@ export default function MetodologiaPage() {
           <em>nome do aluno + data de nascimento</em>, extraídos do campo de formulário da
           venda. Quando isso não é possível, o painel cai para responsável (nome + CPF) e, em
           último caso, para o próprio pedido — cada uma dessas exceções aparece no painel de
-          qualidade de dados. Essa chave já foi validada num caso real: o mesmo aluno apareceu em
-          2 pedidos (uma tentativa vencida e uma paga depois) e foi corretamente contado como 1
-          aluno, não 2, em &ldquo;alunos com pré-matrícula&rdquo; — mas como 2 pedidos, já que
-          duas transações de fato existiram.
+          qualidade de dados.
+        </p>
+        <p>
+          <strong>Tentativa vencida substituída por pagamento posterior:</strong> quando o mesmo
+          aluno tem um pedido pendente/vencido e outro pago, o pedido pendente/vencido é
+          descartado de todas as contagens (não entra em pedidos, valor vendido, nem aparece na
+          tabela) — é tratado como uma tentativa de checkout abandonada, não como uma venda a
+          mais. Caso real que validou a regra: um aluno em Tijuca teve um pedido vencido às 10:30
+          e outro pago às 12:09 no mesmo dia; hoje ele conta como 1 aluno e 1 pedido (o pago), não
+          2. Cancelamentos e estornos do mesmo aluno não são afetados por esta regra — continuam
+          visíveis normalmente.
         </p>
         <p>
           <strong>Unidade:</strong> resolvida pelo canal de venda de cada linha (ex.:

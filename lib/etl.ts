@@ -71,6 +71,24 @@ const RAW_DATA_DIR = path.join(process.cwd(), "data", "raw");
  *   "Status da Venda" para o mesmo conceito (mesmos valores possíveis,
  *   como "Pago"/"Em aberto"). O parser lê os dois nomes de coluna,
  *   preferindo "Status do Pagamento" quando ambos existirem.
+ *
+ * - TENTATIVA VENCIDA SUBSTITUÍDA POR PAGAMENTO POSTERIOR (regra de
+ *   negócio explícita, pedida pelo usuário): quando o MESMO aluno (mesma
+ *   alunoKey) tem um pedido com status pendente/vencido e outro pedido
+ *   com status pago, o pedido pendente/vencido é descartado por completo
+ *   (não entra em "pedidos", "valor vendido", "valor pendente" nem na
+ *   tabela de alunos) — ele é tratado como uma tentativa de checkout
+ *   abandonada/expirada que foi substituída pela matrícula paga, não como
+ *   uma venda adicional. Caso real que motivou a regra: aluno "Breno
+ *   Henrique Boaventura Barcellos casemiro" (Tijuca) tinha um pedido
+ *   `Vencido` às 10:30 e outro `Pago` às 12:09 no mesmo dia — sem esta
+ *   regra, o pedido vencido ainda contava em "Pedidos" e "Pendente/
+ *   vencido" mesmo após o pagamento ter sido concluído. O descarte é
+ *   registrado como alerta `pedido_pendente_substituido_por_pago` para
+ *   manter rastreabilidade. Escopo deliberadamente limitado a
+ *   pendente/vencido — pedidos cancelados/estornados do mesmo aluno NÃO
+ *   são descartados por esta regra (não foi pedido, e esconderiam
+ *   histórico de cancelamento/estorno relevante).
  */
 
 interface RawRow {
@@ -350,6 +368,38 @@ function dedupeItems(
   return Array.from(seen.values());
 }
 
+/**
+ * Descarta pedidos pendentes/vencidos de um aluno quando esse mesmo aluno
+ * já tem um pedido pago — ver docstring "TENTATIVA VENCIDA SUBSTITUÍDA POR
+ * PAGAMENTO POSTERIOR" no topo do arquivo. Roda por item (não por pedido)
+ * porque um pedido pode ter vários alunos; só o item do aluno substituído
+ * é removido, preservando os demais itens do mesmo pedido, se houver.
+ */
+export function dropSupersededPendingItems(
+  items: ItemVenda[],
+  issues: DataQualityIssue[],
+): ItemVenda[] {
+  const alunoKeysComPagamento = new Set(
+    items.filter((i) => i.statusBucket === "pago").map((i) => i.alunoKey),
+  );
+
+  return items.filter((item) => {
+    const substituido =
+      item.statusBucket === "pendente_vencido" &&
+      alunoKeysComPagamento.has(item.alunoKey);
+    if (substituido) {
+      issues.push({
+        tipo: "pedido_pendente_substituido_por_pago",
+        descricao: `Pedido pendente/vencido do aluno "${item.alunoNome ?? item.alunoKey}" descartado das contagens: o mesmo aluno já tem um pedido pago (tratado como tentativa anterior substituída, não como venda adicional).`,
+        arquivoOrigem: item.arquivoOrigem,
+        linha: item.linhaOrigem,
+        codigoVenda: item.codigoVenda,
+      });
+    }
+    return !substituido;
+  });
+}
+
 function buildPedidos(
   items: ItemVenda[],
   issues: DataQualityIssue[],
@@ -491,6 +541,7 @@ export function loadDashboardData(): DashboardData {
   }
 
   allItems = dedupeItems(allItems, issues);
+  allItems = dropSupersededPendingItems(allItems, issues);
   const pedidos = buildPedidos(allItems, issues);
 
   const kpisPorUnidade: UnitKpi[] = UNITS.map((unit) => {
