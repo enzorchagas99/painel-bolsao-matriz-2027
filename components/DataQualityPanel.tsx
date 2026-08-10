@@ -19,6 +19,7 @@ const TIPO_LABEL: Record<string, string> = {
   valor_pedido_inconsistente: "Valor divergente entre linhas do mesmo pedido",
   unidade_marketplace_canal_divergentes: "Canal e Marketplace apontam para unidades diferentes",
   pedido_pendente_substituido_por_pago: "Pedido vencido descartado (mesmo aluno já pagou em outro pedido)",
+  quantidade_maior_que_alunos_identificados: "Quantidade > 1 numa linha com só 1 aluno identificado",
 };
 
 export function DataQualityPanel({ issues }: { issues: DataQualityIssue[] }) {

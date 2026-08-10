@@ -17,11 +17,17 @@ const PAGE_SIZE = 50;
 interface Row {
   pedido: Pedido;
   item: ItemVenda;
-  /** valor exibido para este aluno: valor do pedido dividido pelo número de
-   * alunos do mesmo pedido, para não sugerir que a soma da coluna é maior
-   * que o valor realmente cobrado. */
+  /** valor exibido para esta linha: valor do pedido dividido pelo total de
+   * unidades do pedido (soma de "Quantidade" de todos os itens, não a
+   * contagem de linhas) e multiplicado pela Quantidade desta linha — para
+   * não sugerir que a soma da coluna é maior que o valor realmente
+   * cobrado, mesmo quando uma única linha representa mais de 1 unidade
+   * (Quantidade > 1) sem um 2º aluno nomeado. */
   valorRateado: number;
-  totalAlunosNoPedido: number;
+  totalUnidadesNoPedido: number;
+  /** true quando ESTA linha sozinha já representa mais de 1 unidade
+   * (Quantidade > 1) — nesse caso o 2º aluno não está nomeado na fonte. */
+  linhaComUnidadeExtraNaoNomeada: boolean;
 }
 
 function normalize(value: string): string {
@@ -34,13 +40,15 @@ function normalize(value: string): string {
 function buildRows(pedidos: Pedido[]): Row[] {
   const rows: Row[] = [];
   for (const pedido of pedidos) {
-    const total = pedido.itens.length || 1;
+    const totalUnidades =
+      pedido.itens.reduce((soma, i) => soma + i.quantidade, 0) || 1;
     for (const item of pedido.itens) {
       rows.push({
         pedido,
         item,
-        valorRateado: pedido.valorPedido / total,
-        totalAlunosNoPedido: total,
+        valorRateado: (pedido.valorPedido / totalUnidades) * item.quantidade,
+        totalUnidadesNoPedido: totalUnidades,
+        linhaComUnidadeExtraNaoNomeada: item.quantidade > 1,
       });
     }
   }
@@ -296,7 +304,7 @@ function FragmentRow({
   onToggle: () => void;
   showUnidadeColumn: boolean;
 }) {
-  const { pedido, item, valorRateado, totalAlunosNoPedido } = row;
+  const { pedido, item, valorRateado, totalUnidadesNoPedido, linhaComUnidadeExtraNaoNomeada } = row;
   const outrosAlunos = pedido.itens.filter((i) => i !== item);
 
   return (
@@ -328,9 +336,13 @@ function FragmentRow({
         </td>
         <td className="px-4 py-3 text-right tabular-nums font-medium text-ink">
           {formatBRL(valorRateado)}
-          {totalAlunosNoPedido > 1 ? (
+          {linhaComUnidadeExtraNaoNomeada ? (
+            <span className="ml-1 text-[10px] font-normal text-sem-purple">
+              (inclui {item.quantidade}ª unidade não identificada)
+            </span>
+          ) : totalUnidadesNoPedido > 1 ? (
             <span className="ml-1 text-[10px] font-normal text-ink-3">
-              (1/{totalAlunosNoPedido} do pedido)
+              (1/{totalUnidadesNoPedido} do pedido)
             </span>
           ) : null}
         </td>
@@ -355,8 +367,15 @@ function FragmentRow({
               <Detail label="Série pretendida (2027)" value={item.seriePretendida ?? "—"} />
               <Detail
                 label="Valor total do pedido"
-                value={`${formatBRL(pedido.valorPedido)}${totalAlunosNoPedido > 1 ? ` (dividido entre ${totalAlunosNoPedido} alunos)` : ""}`}
+                value={`${formatBRL(pedido.valorPedido)}${totalUnidadesNoPedido > 1 ? ` (dividido entre ${totalUnidadesNoPedido} unidades)` : ""}`}
               />
+              {linhaComUnidadeExtraNaoNomeada ? (
+                <Detail
+                  label="Atenção"
+                  value={`Esta linha tem Quantidade=${item.quantidade} na fonte, mas só 1 aluno foi identificado no formulário. Pode haver um ${item.quantidade}º aluno não registrado nesta compra — confirmar com a família.`}
+                  className="sm:col-span-2 lg:col-span-3"
+                />
+              ) : null}
               <Detail
                 label="Método de pagamento"
                 value={`${item.metodoPagamento || "—"}${item.bandeiraCartao ? ` (${item.bandeiraCartao})` : ""}${item.numeroParcelas ? ` · ${item.numeroParcelas}x` : ""}`}

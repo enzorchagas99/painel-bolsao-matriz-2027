@@ -293,6 +293,24 @@ function processFile(
     const parcelasRaw = (row["Número de Parcelas"] || "").trim();
     const numeroParcelas = parcelasRaw ? Number.parseInt(parcelasRaw, 10) : null;
 
+    const quantidade = Number.parseInt(row["Quantidade"] || "1", 10) || 1;
+    if (quantidade > 1) {
+      // Uma única linha pode representar N unidades (Quantidade > 1) sem
+      // que a fonte nomeie os N alunos — "Formulários" só tem 1 conjunto
+      // de respostas por linha. Isso é diferente do caso de N linhas
+      // separadas (uma por aluno, cada uma com Quantidade=1). O ticket
+      // médio já soma "Quantidade" para não inflar (ver
+      // computeKpiForPedidos), mas a identidade do(s) aluno(s) além do
+      // primeiro fica sem nome — sinalizado aqui para revisão manual.
+      issues.push({
+        tipo: "quantidade_maior_que_alunos_identificados",
+        descricao: `Linha com Quantidade=${quantidade} mas apenas 1 conjunto de respostas de formulário (aluno "${parsedForm.alunoNome ?? "não identificado"}") — a identidade do(s) outro(s) aluno(s) implícito(s) nesta linha não está disponível na fonte. O valor já é contabilizado corretamente (dividido pela Quantidade no ticket médio), mas o(s) aluno(s) adicional(is) não aparece(m) nomeado(s) na tabela.`,
+        arquivoOrigem: fileName,
+        linha,
+        codigoVenda,
+      });
+    }
+
     items.push({
       arquivoOrigem: fileName,
       linhaOrigem: linha,
@@ -303,7 +321,7 @@ function processFile(
       canalOriginal,
       nomeItem: (row["Nome do Item"] || "").trim(),
       skuItem: (row["SKU do Item"] || "").trim(),
-      quantidade: Number.parseInt(row["Quantidade"] || "1", 10) || 1,
+      quantidade,
       valorItem,
       valorItens,
       valorFrete: parseMoney(row["Valor do Frete"]),
@@ -462,12 +480,22 @@ function emptyKpi(slug: string, nome: string): UnitKpi {
   };
 }
 
-function computeKpiForPedidos(slug: string, nome: string, pedidos: Pedido[]): UnitKpi {
+export function computeKpiForPedidos(slug: string, nome: string, pedidos: Pedido[]): UnitKpi {
   const kpi = emptyKpi(slug, nome);
   kpi.pedidos = pedidos.length;
 
   const alunosValidos = new Set<string>();
-  let pedidosPagos = 0;
+  // Denominador do ticket médio: soma de "Quantidade" nos itens pagos, não
+  // contagem de pedidos pagos. Um pedido pode valer por mais de uma
+  // pré-matrícula de duas formas na fonte: (a) múltiplas linhas, uma por
+  // aluno (caso Christianes, Quantidade=1 em cada linha), ou (b) uma única
+  // linha com Quantidade=2 representando 2 unidades comprometidas mas só 1
+  // aluno nomeado no formulário (caso real: pedido LP1-JYX97-JZCHN, Bryan
+  // Gaspar do Amaral Medeiros, Quantidade=2, Valor dos Itens=600 — R$300 x
+  // 2). Contar por pedido nesse segundo caso infla o ticket médio (parecia
+  // R$312 em vez de R$300). Somar Quantidade cobre os dois padrões sem
+  // depender de identificar o 2º aluno, que a fonte não nomeia.
+  let unidadesPagas = 0;
 
   for (const pedido of pedidos) {
     kpi.valorVendidoBruto += pedido.valorPedido;
@@ -479,7 +507,7 @@ function computeKpiForPedidos(slug: string, nome: string, pedidos: Pedido[]): Un
     switch (pedido.statusBucket) {
       case "pago":
         kpi.valorPago += pedido.valorPedido;
-        pedidosPagos += 1;
+        unidadesPagas += pedido.itens.reduce((soma, item) => soma + item.quantidade, 0);
         break;
       case "pendente_vencido":
         kpi.valorPendenteVencido += pedido.valorPedido;
@@ -496,7 +524,7 @@ function computeKpiForPedidos(slug: string, nome: string, pedidos: Pedido[]): Un
   }
 
   kpi.alunosPreMatricula = alunosValidos.size;
-  kpi.ticketMedioPago = pedidosPagos > 0 ? kpi.valorPago / pedidosPagos : 0;
+  kpi.ticketMedioPago = unidadesPagas > 0 ? kpi.valorPago / unidadesPagas : 0;
   kpi.taxaPagamentoPct =
     kpi.valorVendidoBruto > 0 ? (kpi.valorPago / kpi.valorVendidoBruto) * 100 : 0;
 

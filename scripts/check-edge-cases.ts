@@ -1,8 +1,8 @@
 import { identifyUnitByChannel } from "../lib/units";
 import { classifyStatus } from "../lib/status";
 import { parseMoney, parseDataVenda, dataVendaFormatoAmbiguo } from "../lib/normalize";
-import { dropSupersededPendingItems } from "../lib/etl";
-import type { ItemVenda, DataQualityIssue } from "../lib/types";
+import { dropSupersededPendingItems, computeKpiForPedidos } from "../lib/etl";
+import type { ItemVenda, Pedido, DataQualityIssue } from "../lib/types";
 
 function fakeItem(overrides: Partial<ItemVenda>): ItemVenda {
   return {
@@ -140,6 +140,54 @@ assertEq("data nao ambigua", dataVendaFormatoAmbiguo("8/8/2026, 11:14"), false);
     result.map((i) => i.codigoVenda).sort(),
     ["LP1-A-VENCIDO", "LP1-B-PAGO"],
   );
+}
+
+// Regra: ticket médio deve dividir por unidades (Quantidade), não por pedido
+{
+  // 2 pedidos de R$300 (1 unidade cada) + 1 pedido de R$600 com Quantidade=2
+  // numa única linha (1 aluno nomeado, 2ª unidade sem nome). Ticket médio
+  // correto = 1200 / (1+1+2) = 300, NÃO 1200/3 pedidos = 400.
+  const pedidos: Pedido[] = [
+    {
+      codigoVenda: "LP1-A",
+      unidadeSlug: "tijuca",
+      unidadeNome: "Tijuca",
+      valorPedido: 300,
+      dataVenda: new Date(2026, 7, 8),
+      statusBucket: "pago",
+      statusPagamentoRaw: "Pago",
+      metodoPagamento: "Pix",
+      numeroParcelas: 1,
+      itens: [fakeItem({ codigoVenda: "LP1-A", alunoKey: "aluno:a|2015-01-01", quantidade: 1, valorItens: 300 })],
+    },
+    {
+      codigoVenda: "LP1-B",
+      unidadeSlug: "tijuca",
+      unidadeNome: "Tijuca",
+      valorPedido: 300,
+      dataVenda: new Date(2026, 7, 8),
+      statusBucket: "pago",
+      statusPagamentoRaw: "Pago",
+      metodoPagamento: "Pix",
+      numeroParcelas: 1,
+      itens: [fakeItem({ codigoVenda: "LP1-B", alunoKey: "aluno:b|2015-01-01", quantidade: 1, valorItens: 300 })],
+    },
+    {
+      codigoVenda: "LP1-C",
+      unidadeSlug: "tijuca",
+      unidadeNome: "Tijuca",
+      valorPedido: 600,
+      dataVenda: new Date(2026, 7, 8),
+      statusBucket: "pago",
+      statusPagamentoRaw: "Pago",
+      metodoPagamento: "Pix",
+      numeroParcelas: 1,
+      itens: [fakeItem({ codigoVenda: "LP1-C", alunoKey: "aluno:c|2015-01-01", quantidade: 2, valorItens: 600 })],
+    },
+  ];
+  const kpi = computeKpiForPedidos("tijuca", "Tijuca", pedidos);
+  assertEq("ticket médio soma Quantidade, não pedidos", kpi.ticketMedioPago, 300);
+  assertEq("valor vendido não é afetado pela Quantidade", kpi.valorVendidoBruto, 1200);
 }
 
 console.log("\nEdge cases concluídos.");

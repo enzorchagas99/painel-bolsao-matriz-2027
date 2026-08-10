@@ -202,9 +202,22 @@ grafia do sobrenome).
 | Valor vendido | Soma do valor de todos os pedidos, qualquer status (bruto) | idem |
 | Valor pago | Soma dos pedidos com status "Pago" | idem |
 | Pendente/vencido, Cancelado, Estornado | Soma por bucket de status | idem |
-| Ticket médio pago | Valor pago ÷ pedidos pagos | idem |
+| Ticket médio pago | Valor pago ÷ **unidades pagas** (soma de "Quantidade" nos itens pagos — não a contagem de pedidos) | idem |
 | % pago | Valor pago ÷ valor vendido | idem |
 | Evolução diária | Pedidos e valor agrupados por dia da venda (fuso `America/Sao_Paulo`) | `lib/etl.ts::buildEvolucaoDiaria` |
+
+**Por que "unidades pagas" e não "pedidos pagos" no ticket médio:** um pedido
+pode valer por mais de uma pré-matrícula de duas formas na fonte —
+múltiplas linhas (uma por aluno, `Quantidade=1` cada) ou uma única linha
+com `Quantidade=2` representando 2 unidades mas só 1 aluno nomeado no
+formulário (caso real: pedido `LP1-JYX97-JZCHN`, R$600, `Quantidade=2`,
+1 único aluno identificado — Bryan Gaspar do Amaral Medeiros). Dividir por
+contagem de pedidos nesse segundo padrão inflava o ticket médio (mostrava
+R$312,33 em vez de R$300,00 quando esse pedido existia na base). Somar
+`Quantidade` cobre os dois padrões corretamente sem depender de nomear o
+2º aluno, que a fonte não fornece — esse caso gera o alerta
+`quantidade_maior_que_alunos_identificados` no painel de qualidade de
+dados, para revisão manual de quem é o 2º aluno.
 
 Todas as definições também estão documentadas em `/metodologia` dentro do
 próprio painel.
