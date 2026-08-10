@@ -74,10 +74,14 @@ export function formatDateTimeBR(date: Date | null): string {
   return date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
+/** Formata em R$ sem casas decimais (arredondado), por pedido do usuário —
+ * ex.: R$ 22.800 em vez de R$ 22.800,00. Usado em todo o painel. */
 export function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 }
 
