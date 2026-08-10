@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { ItemVenda, Pedido, StatusBucket } from "@/lib/types";
-import { formatBRL, formatDateBR, formatDateTimeBR } from "@/lib/normalize";
+import { formatBRL, formatDateBR, formatDateTimeBR, toTitleCaseName } from "@/lib/normalize";
 import { STATUS_BUCKET_LABEL } from "@/lib/status";
 import { StatusPill } from "./StatusPill";
 
@@ -321,7 +321,11 @@ function FragmentRow({
           </button>
         </td>
         <td className="px-4 py-3 font-medium text-ink">
-          {item.alunoNome ?? <span className="italic text-ink-3">não identificado</span>}
+          {item.alunoNome ? (
+            toTitleCaseName(item.alunoNome)
+          ) : (
+            <span className="italic text-ink-3">não identificado</span>
+          )}
         </td>
         {showUnidadeColumn ? (
           <td className="px-4 py-3 text-ink-2">
@@ -392,7 +396,9 @@ function FragmentRow({
               {outrosAlunos.length > 0 ? (
                 <Detail
                   label="Outros alunos neste mesmo pedido"
-                  value={outrosAlunos.map((i) => i.alunoNome ?? "não identificado").join(", ")}
+                  value={outrosAlunos
+                    .map((i) => (i.alunoNome ? toTitleCaseName(i.alunoNome) : "não identificado"))
+                    .join(", ")}
                   className="sm:col-span-2 lg:col-span-3"
                 />
               ) : null}

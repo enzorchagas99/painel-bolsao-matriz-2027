@@ -85,6 +85,36 @@ export function formatBRL(value: number): string {
   });
 }
 
+const PREPOSICOES_MINUSCULAS = new Set(["de", "da", "do", "das", "dos"]);
+
+function capitalizarPalavra(palavra: string): string {
+  // preserva hífens (ex.: "maria-jose" -> "Maria-Jose")
+  return palavra
+    .split("-")
+    .map((parte) => (parte.length > 0 ? parte[0].toUpperCase() + parte.slice(1) : parte))
+    .join("-");
+}
+
+/**
+ * Formata um nome de pessoa em Title Case só para EXIBIÇÃO — nunca usar
+ * para chaves de deduplicação (alunoKey já normaliza separadamente em
+ * normalizeNameForKey) nem para persistir/alterar o dado original. Trata
+ * registros vindos totalmente em maiúsculas ou minúsculas do export
+ * (ex.: "JOÃO DA SILVA" ou "maria oliveira") e mantém preposições
+ * (de/da/do/das/dos) em minúsculas.
+ */
+export function toTitleCaseName(name: string | null | undefined): string {
+  if (!name || !name.trim()) return "";
+  return name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((palavra) =>
+      PREPOSICOES_MINUSCULAS.has(palavra) ? palavra : capitalizarPalavra(palavra),
+    )
+    .join(" ");
+}
+
 export interface FormulariosParsed {
   alunoNome: string | null;
   alunoDataNascimentoRaw: string | null;

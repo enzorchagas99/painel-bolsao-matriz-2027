@@ -1,6 +1,6 @@
 import { identifyUnitByChannel } from "../lib/units";
 import { classifyStatus } from "../lib/status";
-import { parseMoney, parseDataVenda, dataVendaFormatoAmbiguo } from "../lib/normalize";
+import { parseMoney, parseDataVenda, dataVendaFormatoAmbiguo, toTitleCaseName } from "../lib/normalize";
 import { dropSupersededPendingItems, computeKpiForPedidos } from "../lib/etl";
 import type { ItemVenda, Pedido, DataQualityIssue } from "../lib/types";
 
@@ -189,5 +189,17 @@ assertEq("data nao ambigua", dataVendaFormatoAmbiguo("8/8/2026, 11:14"), false);
   assertEq("ticket médio soma Quantidade, não pedidos", kpi.ticketMedioPago, 300);
   assertEq("valor vendido não é afetado pela Quantidade", kpi.valorVendidoBruto, 1200);
 }
+
+assertEq("Title Case: todo maiúsculo", toTitleCaseName("JOÃO DA SILVA"), "João da Silva");
+assertEq("Title Case: todo minúsculo", toTitleCaseName("maria oliveira"), "Maria Oliveira");
+assertEq(
+  "Title Case: várias preposições",
+  toTitleCaseName("ANA CLARA DOS SANTOS DAS NEVES DE OLIVEIRA"),
+  "Ana Clara dos Santos das Neves de Oliveira",
+);
+assertEq("Title Case: já misto permanece correto", toTitleCaseName("Pedro Augusto"), "Pedro Augusto");
+assertEq("Title Case: nome com hífen", toTitleCaseName("maria-jose silva-santos"), "Maria-Jose Silva-Santos");
+assertEq("Title Case: null retorna vazio", toTitleCaseName(null), "");
+assertEq("Title Case: espaços extras são normalizados", toTitleCaseName("  JOÃO   DA SILVA  "), "João da Silva");
 
 console.log("\nEdge cases concluídos.");
