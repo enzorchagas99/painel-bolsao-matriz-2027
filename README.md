@@ -151,16 +151,18 @@ o status já resumido pela Layers no nível do pedido (não há arquivo de
 parcelas/repasses nesta fonte — diferente do pipeline de mensalidades
 recorrentes documentado em `documentacao_tecnica_data_engine.md`, que é
 uma fonte de dados diferente, via Parquet/S3). Valores confirmados nos
-dados atuais: `"Pago"`, `"Vencido"` e `"Em aberto"`. Os demais mapeamentos
-em `lib/status.ts` (Pendente/Cancelado/Estornado/Chargeback/Reembolsado
-etc.) foram
-antecipados a partir do vocabulário usado nos três documentos de referência
-lidos, **mas não confirmados nesta fonte específica** — qualquer status que
-não bata com o mapeamento cai em `"não classificado"` e é sinalizado no
-painel de qualidade de dados, em vez de presumido. **Ponto a validar:**
-quando aparecerem os primeiros `"Cancelado"`/`"Estornado"` reais, conferir
-se o texto exato bate com o mapeamento em `lib/status.ts` — o painel avisa
-automaticamente se não bater.
+dados atuais: `"Pago"`, `"Vencido"`, `"Em aberto"` e `"Recebido"`
+(confirmado como sinônimo de "Pago" pelo usuário em 11/08/2026 — 42 de 82
+registros daquela carga, mais da metade). Os demais mapeamentos em
+`lib/status.ts` (Pendente/Cancelado/Estornado/Chargeback/Reembolsado etc.)
+foram antecipados a partir do vocabulário usado nos três documentos de
+referência lidos, **mas não confirmados nesta fonte específica** —
+qualquer status que não bata com o mapeamento cai em `"não classificado"`
+e é sinalizado no painel de qualidade de dados, em vez de presumido.
+**Ponto a validar:** quando aparecerem os primeiros
+`"Cancelado"`/`"Estornado"` reais, conferir se o texto exato bate com o
+mapeamento em `lib/status.ts` — o painel avisa automaticamente se não
+bater.
 
 ## Tentativa vencida substituída por pagamento posterior
 
@@ -246,17 +248,31 @@ que inclui o aluno (`Código da Venda + SKU + link + alunoKey`) exatamente
 para não confundir uma linha genuinamente repetida com um pedido legítimo
 de múltiplos alunos que compartilha SKU e link (caso Christianes acima).
 
-### Hipótese de formato de data assumida (verificar em novas cargas)
+### Formato de data — hipótese corrigida em 11/08/2026
 
-O campo `Data da Venda` vem como `"8/8/2026, 11:14"`. Foi adotada a
-hipótese `mês/dia/ano` (padrão en-US, compatível com
-`Date.toLocaleString('en-US')`, que é o formato mais provável de origem do
-export). Como todos os 52 registros disponíveis até agora são do mesmo dia
-(08/08/2026), não há como confirmar isso pelos dados atuais — se em uma
-carga futura aparecer uma data cujo primeiro número seja maior que 12 (ex.:
-`25/1/2026`), o parser não consegue interpretar da forma esperada e o ETL
-gera o alerta `formato_data_ambiguo`, sinalizando a inconsistência para
-revisão em vez de silenciosamente errar a data.
+O campo `Data da Venda` vem como `"10/8/2026, 13:10"`. **Até 08/08/2026 o
+código assumia `mês/dia/ano`** (padrão en-US) — hipótese adotada sem
+evidência real, porque os únicos dados disponíveis até então eram todos do
+dia 8/8, onde dia e mês coincidem e nada desambigua. A carga de
+11/08/2026 trouxe a primeira evidência real: registros `"10/8/2026"`.
+Sob a hipótese antiga (M/D) isso seria **8 de outubro — uma data futura
+impossível** para uma venda já registrada num arquivo gerado em
+11/08/2026 (confirmado pelo timestamp ISO no nome do arquivo). Sob `D/M`
+(dia/mês/ano) é 10 de agosto, um dia antes da geração do arquivo —
+plausível. **O parser foi corrigido para `dia/mês/ano`** (ver
+`lib/normalize.ts::parseDataVenda`); o alerta `formato_data_ambiguo`
+agora dispara quando o componente de mês (2º valor) é maior que 12.
+
+### Colunas monetárias mudaram de nome (corrigido em 11/08/2026)
+
+A carga de 11/08/2026 trouxe as colunas `Valor do Item na Venda`, `Valor
+dos Itens`, `Valor dos Juros` e `Valor do Frete` renomeadas com sufixo
+`" ($)"` (ex.: `"Valor dos Itens ($)"`), sem aviso — isso fazia todo
+valor ser lido como zero/ausente silenciosamente (86 alertas
+`valor_zero_ou_ausente` numa única carga). O parser agora lê essas
+colunas por uma lista de nomes possíveis (`lib/etl.ts::col()`), não por
+um nome fixo só, para não quebrar de novo se a Layers renomear outra
+coluna equivalente no futuro.
 
 ## Como rodar localmente
 
@@ -319,23 +335,23 @@ necessária — é um projeto Next.js padrão).
 
 1. **Américas:** nenhuma venda real disponível ainda para confirmar que o
    texto do canal usado pela Layers bate com o esperado (`"Américas"`).
-2. **Status de pagamento além de "Pago"/"Vencido"/"Em aberto":** os demais
-   valores do mapeamento em `lib/status.ts` (Cancelado, Estornado,
-   Chargeback, Reembolsado etc.) foram antecipados a partir de
+2. **Status de pagamento além de "Pago"/"Vencido"/"Em aberto"/"Recebido":**
+   os demais valores do mapeamento em `lib/status.ts` (Cancelado,
+   Estornado, Chargeback, Reembolsado etc.) foram antecipados a partir de
    documentação de um pipeline de dados diferente (mensalidades
    recorrentes), não desta fonte. Confirmar assim que aparecerem
    cancelamentos/estornos reais.
-3. **Hipótese de formato de data (mês/dia/ano):** não confirmável com os
-   dados atuais (todos do mesmo dia). O painel de qualidade de dados avisa
-   automaticamente se uma data futura contradisser a hipótese.
-4. **Decisão de acesso sem autenticação:** ver seção no topo deste README —
+3. **Decisão de acesso sem autenticação:** ver seção no topo deste README —
    registrada como decisão de negócio explícita, não uma omissão técnica.
-5. **Possível duplicidade não auto-resolvida ("Lara Valentina"):** dois
-   registros em Rocha Miranda têm a mesma data de nascimento
-   (21/07/2018) e nomes quase idênticos ("Lara Valentina Da Silva
-   Rodrigues", pago, e "Lara Valentina da Silva", em aberto) — a chave
-   exata nome+nascimento não os une por causa da diferença de sobrenome, e
-   por isso a regra de "vencido substituído por pago" não se aplicou aqui.
-   Requer checagem manual da equipe para confirmar se é a mesma criança
-   (nesse caso, o pedido em aberto deveria ser descartado manualmente) ou
-   duas famílias diferentes com coincidência de nome e data.
+4. **Possível duplicidade não auto-resolvida ("Lara Valentina", Rocha
+   Miranda):** dois pedidos com a mesma data de nascimento (21/07/2018) e
+   nomes quase idênticos ("Lara Valentina Da Silva Rodrigues" e "Lara
+   Valentina da Silva", comprador "Edison"/"Edilson Luis Rodrigues" no
+   mesmo endereço) — **agora os dois pedidos aparecem como `Pago`**
+   (atualização de 11/08/2026), então a regra de "vencido substituído por
+   pago" não se aplica (ela só descarta pendente/vencido, não dois pagos).
+   Se for a mesma criança, isso infla Rocha Miranda em 1 aluno/pedido e
+   R$300 a mais do que o real. A chave exata nome+nascimento não une os
+   dois por causa da diferença de sobrenome — requer checagem manual da
+   equipe (ex.: contatar o responsável) para confirmar se é 1 criança com
+   2 cobranças ou 2 crianças distintas com coincidência de nome e data.

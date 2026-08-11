@@ -107,6 +107,21 @@ function readCsvFile(filePath: string): RawRow[] {
   }) as RawRow[];
 }
 
+/**
+ * Lê uma coluna tentando múltiplos nomes possíveis, na ordem dada — os
+ * exports da Layers já mudaram nome de coluna mais de uma vez para o
+ * mesmo conceito (ex.: "Valor dos Itens" virou "Valor dos Itens ($)" na
+ * carga de 11/08/2026; "Status do Pagamento" virou "Status da Venda" na
+ * carga anterior). Evita que uma nova variação de nome derrube o campo
+ * inteiro para vazio/zero silenciosamente.
+ */
+function col(row: RawRow, ...names: string[]): string {
+  for (const name of names) {
+    if (row[name] !== undefined) return row[name];
+  }
+  return "";
+}
+
 function extractTransacaoId(link: string | undefined): string | null {
   if (!link) return null;
   const match = link.match(
@@ -208,8 +223,8 @@ function processFile(
       });
     }
 
-    const valorItem = parseMoney(row["Valor do Item na Venda"]);
-    const valorItens = parseMoney(row["Valor dos Itens"]);
+    const valorItem = parseMoney(col(row, "Valor do Item na Venda", "Valor do Item na Venda ($)"));
+    const valorItens = parseMoney(col(row, "Valor dos Itens", "Valor dos Itens ($)"));
     if (valorItens <= 0) {
       issues.push({
         tipo: "valor_zero_ou_ausente",
@@ -244,9 +259,7 @@ function processFile(
     // "Status do Pagamento" (export por unidade) e "Status da Venda" (export
     // consolidado "Matriz") são o mesmo conceito com nomes de coluna
     // diferentes — ver nota no topo do arquivo.
-    const statusPagamentoRaw = (
-      row["Status do Pagamento"] || row["Status da Venda"] || ""
-    ).trim();
+    const statusPagamentoRaw = col(row, "Status do Pagamento", "Status da Venda").trim();
     if (!statusPagamentoRaw) {
       issues.push({
         tipo: "status_pagamento_ausente",
@@ -324,9 +337,9 @@ function processFile(
       quantidade,
       valorItem,
       valorItens,
-      valorFrete: parseMoney(row["Valor do Frete"]),
-      valorDescontos: parseMoney(row["Valor dos Descontos"]),
-      valorJuros: parseMoney(row["Valor dos Juros"]),
+      valorFrete: parseMoney(col(row, "Valor do Frete", "Valor do Frete ($)")),
+      valorDescontos: parseMoney(col(row, "Valor dos Descontos", "Valor dos Descontos ($)")),
+      valorJuros: parseMoney(col(row, "Valor dos Juros", "Valor dos Juros ($)")),
       dataVendaRaw,
       dataVenda,
       statusPagamentoRaw,

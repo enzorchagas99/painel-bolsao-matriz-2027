@@ -27,13 +27,21 @@ export function parseMoney(raw: string | undefined | null): number {
 
 /**
  * Parser de "Data da Venda". Formato observado: "8/8/2026, 11:14".
- * Hipótese adotada (documentada): mês/dia/ano (padrão en-US), consistente
- * com o formato "M/D/YYYY, HH:mm" tipicamente produzido por
- * Date.toLocaleString('en-US') nos exports da Layers.
  *
- * Validação: se qualquer valor no primeiro componente for > 12, a hipótese
- * M/D estaria errada (seria D/M) — ver checagem em lib/etl.ts
- * (dataQuality: "formato_data_ambiguo").
+ * Hipótese CORRIGIDA em 11/08/2026: dia/mês/ano (D/M/YYYY), não mês/dia/ano
+ * como se assumiu inicialmente. A hipótese original (M/D, padrão en-US) foi
+ * adotada por falta de evidência — os primeiros dados disponíveis (14
+ * registros) eram todos do dia 8/8, onde dia e mês coincidem e não
+ * desambiguam nada. A carga de 11/08/2026 trouxe registros "10/8/2026" —
+ * sob a hipótese M/D isso seria 8 de outubro, uma data FUTURA impossível
+ * para uma venda já registrada num arquivo gerado em 11/08/2026 (conferir
+ * pelo timestamp ISO no nome do arquivo). Sob D/M é 10 de agosto, um dia
+ * antes da geração do arquivo — plausível. Essa é a primeira evidência
+ * real disponível nos dados, e ela contradiz a hipótese original.
+ *
+ * Validação: se o componente de MÊS (2º valor, em D/M) for > 12, o formato
+ * não é D/M nem M/D — ver checagem em lib/etl.ts (dataQuality:
+ * "formato_data_ambiguo").
  */
 export function parseDataVenda(raw: string | undefined | null): Date | null {
   if (!raw) return null;
@@ -42,8 +50,8 @@ export function parseDataVenda(raw: string | undefined | null): Date | null {
     .match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!match) return null;
   const [, a, b, year, hour, minute, second] = match;
-  const month = Number.parseInt(a, 10);
-  const day = Number.parseInt(b, 10);
+  const day = Number.parseInt(a, 10);
+  const month = Number.parseInt(b, 10);
   const date = new Date(
     Number.parseInt(year, 10),
     month - 1,
@@ -55,13 +63,13 @@ export function parseDataVenda(raw: string | undefined | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** true quando o componente "mês" do valor bruto é > 12 (prova que M/D está errado) */
+/** true quando o componente de mês (2º valor, formato D/M) é > 12 — prova que nem D/M nem M/D descrevem o dado */
 export function dataVendaFormatoAmbiguo(raw: string | undefined | null): boolean {
   if (!raw) return false;
   const match = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (!match) return false;
-  const first = Number.parseInt(match[1], 10);
-  return first > 12;
+  const month = Number.parseInt(match[2], 10);
+  return month > 12;
 }
 
 export function formatDateBR(date: Date | null): string {

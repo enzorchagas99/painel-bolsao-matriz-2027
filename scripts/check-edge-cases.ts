@@ -81,6 +81,7 @@ assertEq("status Pago", classifyStatus("Pago"), "pago");
 assertEq("status Vencido", classifyStatus("Vencido"), "pendente_vencido");
 assertEq("status Cancelado", classifyStatus("Cancelado"), "cancelado");
 assertEq("status Estornado", classifyStatus("Estornado"), "estornado");
+assertEq("status Recebido (confirmado = Pago)", classifyStatus("Recebido"), "pago");
 assertEq("status desconhecido", classifyStatus("Zzz"), "nao_classificado");
 assertEq("status vazio", classifyStatus(""), "nao_classificado");
 
@@ -89,12 +90,17 @@ assertEq("valor R$ formatado", parseMoney("R$0,00"), 0);
 assertEq("valor R$ com milhar", parseMoney("R$1.234,56"), 1234.56);
 
 assertEq(
-  "data M/D/YYYY",
+  "data ambigua (dia=mes coincidem, D/M ou M/D dá no mesmo)",
   parseDataVenda("8/8/2026, 11:14")?.toISOString(),
   new Date(2026, 7, 8, 11, 14, 0).toISOString(),
 );
-assertEq("data ambigua (dia=25 no 1o componente)", dataVendaFormatoAmbiguo("25/1/2026, 10:00"), true);
-assertEq("data nao ambigua", dataVendaFormatoAmbiguo("8/8/2026, 11:14"), false);
+assertEq(
+  "data D/M/YYYY: '10/8/2026' é 10 de agosto (dia=10, mês=8), não 8 de outubro",
+  parseDataVenda("10/8/2026, 13:10")?.toISOString(),
+  new Date(2026, 7, 10, 13, 10, 0).toISOString(),
+);
+assertEq("data ambigua (mês=13 no 2o componente)", dataVendaFormatoAmbiguo("5/13/2026, 10:00"), true);
+assertEq("data nao ambigua", dataVendaFormatoAmbiguo("10/8/2026, 13:10"), false);
 
 // Regra: mesmo aluno com pedido vencido + pedido pago -> descarta o vencido
 {

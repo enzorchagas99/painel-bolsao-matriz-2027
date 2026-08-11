@@ -19,16 +19,21 @@ import type { StatusBucket } from "./types";
  * dependeria de um export adicional de parcelas/repasses.
  *
  * Valores observados até agora: "Pago", "Vencido" (export por unidade,
- * coluna "Status do Pagamento") e "Em aberto" (export consolidado
- * "Matriz", coluna "Status da Venda" — nome de coluna diferente, mesmo
- * conceito; ver leitura combinada em lib/etl.ts). Os demais valores abaixo
- * (Pendente, Cancelado, Estornado, Chargeback, Reembolsado etc.) são
- * antecipados a partir do vocabulário de pagamentos em português usado
- * pela própria Layers nos outros três documentos de referência lidos
- * (RESUMO_INVESTIGACAO, documentacao_tecnica, METODOLOGIA) — não foram
- * confirmados nesta fonte específica. Qualquer valor que não bata com o
- * mapeamento abaixo é marcado como "nao_classificado" e sinalizado no
- * painel de qualidade de dados, em vez de ser presumido silenciosamente.
+ * coluna "Status do Pagamento"), "Em aberto" e "Recebido" (export
+ * consolidado "Matriz", coluna "Status da Venda" — nome de coluna
+ * diferente, mesmo conceito; ver leitura combinada em lib/etl.ts). Os
+ * demais valores abaixo (Pendente, Cancelado, Estornado, Chargeback,
+ * Reembolsado etc.) são antecipados a partir do vocabulário de pagamentos
+ * em português usado pela própria Layers nos outros três documentos de
+ * referência lidos (RESUMO_INVESTIGACAO, documentacao_tecnica,
+ * METODOLOGIA) — não foram confirmados nesta fonte específica. Qualquer
+ * valor que não bata com o mapeamento abaixo é marcado como
+ * "nao_classificado" e sinalizado no painel de qualidade de dados, em vez
+ * de ser presumido silenciosamente.
+ *
+ * "Recebido" -> pago: confirmado explicitamente pelo usuário em
+ * 11/08/2026 (42 de 82 registros da carga daquele dia — mais da metade),
+ * como sinônimo de pagamento efetivamente recebido/confirmado.
  */
 const STATUS_MAP: Record<string, StatusBucket> = {
   pago: "pago",
@@ -36,6 +41,7 @@ const STATUS_MAP: Record<string, StatusBucket> = {
   "pagamento aprovado": "pago",
   confirmado: "pago",
   liberado: "pago",
+  recebido: "pago",
 
   pendente: "pendente_vencido",
   "aguardando pagamento": "pendente_vencido",
