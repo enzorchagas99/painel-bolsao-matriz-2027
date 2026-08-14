@@ -224,6 +224,19 @@ dados, para revisão manual de quem é o 2º aluno.
 Todas as definições também estão documentadas em `/metodologia` dentro do
 próprio painel.
 
+## Exportação para Excel
+
+O botão **Exportar Excel** na tabela "Alunos e pedidos" (visão geral e em
+cada página de unidade) gera um `.xlsx` no navegador, sem passar pelo
+servidor (`lib/export-xlsx.ts`, biblioteca `exceljs` carregada sob demanda
+só quando o botão é clicado, para não pesar o carregamento inicial da
+página). Exporta as linhas **conforme os filtros e a busca ativos no
+momento** (não só a página atual carregada por "Carregar mais"), com um
+conjunto de colunas mais completo que a tabela em tela — inclui CPF,
+telefone, e-mail e endereço do responsável, IDs de pedido/transação e
+canal/marketplace de origem, para uso administrativo pelas escolas e pela
+gestão.
+
 ## Qualidade de dados
 
 O ETL gera um alerta estruturado (arquivo, linha, código do pedido,

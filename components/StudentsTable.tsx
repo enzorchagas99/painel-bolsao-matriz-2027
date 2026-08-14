@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Loader2, Search } from "lucide-react";
 import type { ItemVenda, Pedido, StatusBucket } from "@/lib/types";
 import { formatBRL, formatDateBR, formatDateTimeBR, toTitleCaseName } from "@/lib/normalize";
 import { STATUS_BUCKET_LABEL } from "@/lib/status";
+import { exportAlunosPedidosToExcel } from "@/lib/export-xlsx";
 import { StatusPill } from "./StatusPill";
 
 type SortKey = "data" | "aluno" | "valor" | "status";
@@ -71,6 +72,7 @@ export function StudentsTable({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [exporting, setExporting] = useState(false);
 
   const allRows = useMemo(() => buildRows(pedidos), [pedidos]);
 
@@ -142,6 +144,23 @@ export function StudentsTable({
     });
   }
 
+  async function handleExport() {
+    if (exporting || sorted.length === 0) return;
+    setExporting(true);
+    try {
+      const unidadeSlugParaNome =
+        !showUnidadeColumn && pedidos.length > 0
+          ? (pedidos[0].unidadeSlug ?? "unidade")
+          : unidadeFilter !== "todas"
+            ? unidadeFilter
+            : "todas-unidades";
+      const dataStamp = new Date().toISOString().slice(0, 10);
+      await exportAlunosPedidosToExcel(sorted, `${unidadeSlugParaNome}-${dataStamp}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="rounded-[10px] border border-line-soft bg-white shadow-soft">
       <div className="flex flex-wrap items-center gap-3 border-b border-line-soft p-4">
@@ -199,6 +218,21 @@ export function StudentsTable({
         <span className="text-xs text-ink-3" title="Uma linha por aluno/pedido — pode diferir do KPI 'Alunos com pré-matrícula', que deduplica o mesmo aluno em múltiplas tentativas de compra.">
           {filtered.length} {filtered.length === 1 ? "registro" : "registros"}
         </span>
+
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting || sorted.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-[6px] border border-line px-3 py-2 text-sm font-semibold text-ink-2 hover:border-brand-teal-dark hover:text-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-50"
+          title="Exporta as linhas visíveis conforme os filtros atuais para um arquivo .xlsx"
+        >
+          {exporting ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <Download size={15} />
+          )}
+          Exportar Excel
+        </button>
       </div>
 
       <div className="overflow-x-auto">
