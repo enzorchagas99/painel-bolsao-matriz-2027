@@ -223,7 +223,7 @@ export function StudentsTable({
           type="button"
           onClick={handleExport}
           disabled={exporting || sorted.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-[6px] border border-line px-3 py-2 text-sm font-semibold text-ink-2 hover:border-brand-teal-dark hover:text-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-[6px] bg-sem-green px-3 py-2 text-sm font-semibold text-white shadow-soft hover:bg-sem-green/90 disabled:cursor-not-allowed disabled:opacity-50"
           title="Exporta as linhas visíveis conforme os filtros atuais para um arquivo .xlsx"
         >
           {exporting ? (
