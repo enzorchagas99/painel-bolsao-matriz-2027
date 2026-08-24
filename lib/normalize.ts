@@ -1,10 +1,15 @@
 /**
  * Converte campos monetários do export Layers para number (reais).
- * O export mistura dois formatos no mesmo arquivo:
- *   - número puro: "300", "0"
- *   - moeda formatada: "R$0,00"
- * (confirmado por inspeção direta dos CSVs — coluna "Valor dos Descontos"
- * vem formatada, as demais colunas de valor vêm como número puro).
+ * O export mistura formatos no mesmo arquivo:
+ *   - número puro sem separador: "300", "0"
+ *   - número puro com separador de milhar (ponto) e sem decimais: "1.200"
+ *     (confirmado em dado real: pedido LP1-GKWHZ-KRA3C, Américas, 2 alunos,
+ *     "Valor dos Itens" = "1.200" = R$1.200,00 — NÃO R$1,20. Sem essa regra,
+ *     `parseFloat("1.200")` retorna 1.2, subestimando o valor em ~1000x.)
+ *   - moeda formatada: "R$0,00", "R$1.234,56"
+ * Heurística para distinguir milhar de decimal em valores sem "R$": um
+ * ponto seguido de EXATAMENTE 3 dígitos (podendo repetir, ex. "12.345.678")
+ * é separador de milhar; vírgula sempre indica decimal (padrão pt-BR).
  */
 export function parseMoney(raw: string | undefined | null): number {
   if (raw === undefined || raw === null) return 0;
@@ -19,9 +24,19 @@ export function parseMoney(raw: string | undefined | null): number {
     const value = Number.parseFloat(cleaned);
     return Number.isFinite(value) ? value : 0;
   }
-  // número puro, mas ainda pode vir com vírgula decimal
-  const normalized = trimmed.replace(",", ".");
-  const value = Number.parseFloat(normalized);
+  if (trimmed.includes(",")) {
+    // vírgula decimal, ponto(s) de milhar: "1.234,56" -> 1234.56
+    const cleaned = trimmed.replace(/\./g, "").replace(",", ".");
+    const value = Number.parseFloat(cleaned);
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (/^\d{1,3}(\.\d{3})+$/.test(trimmed)) {
+    // só ponto(s), em grupos de exatamente 3 dígitos: separador de milhar
+    const value = Number.parseFloat(trimmed.replace(/\./g, ""));
+    return Number.isFinite(value) ? value : 0;
+  }
+  // número puro sem separador, ou com ponto decimal isolado (ex.: "300.5")
+  const value = Number.parseFloat(trimmed);
   return Number.isFinite(value) ? value : 0;
 }
 

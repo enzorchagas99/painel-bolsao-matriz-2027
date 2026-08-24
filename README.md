@@ -287,6 +287,21 @@ colunas por uma lista de nomes possíveis (`lib/etl.ts::col()`), não por
 um nome fixo só, para não quebrar de novo se a Layers renomear outra
 coluna equivalente no futuro.
 
+### Valor sem "R$" com separador de milhar (corrigido em 24/08/2026)
+
+`parseMoney` (`lib/normalize.ts`) tratava qualquer ponto num valor sem
+prefixo `"R$"` como separador decimal — correto para `"300"`, `"600"`
+(sem ponto), mas errado para valores de 4+ dígitos exportados com ponto de
+milhar e sem casas decimais, como `"1.200"`. `parseFloat("1.200")` retorna
+`1.2`, subestimando o valor em ~1000x. Caso real que expôs o bug: pedido
+`LP1-GKWHZ-KRA3C` (Américas, 2 alunos, `Valor dos Itens` = `"1.200"` =
+R$1.200,00) aparecia como R$1,20 total (R$0,60 por aluno, arredondado para
+R$1 na exibição sem decimais). O parser agora reconhece ponto seguido de
+grupos de exatamente 3 dígitos (`/^\d{1,3}(\.\d{3})+$/`) como milhar antes
+de cair no `parseFloat` ingênuo — mesma lógica já usada no ramo `"R$"`.
+Valores de 1 a 3 dígitos (`"300"`, `"600"`) continuam funcionando como
+antes, sem essa branch ser acionada.
+
 ## Como rodar localmente
 
 Pré-requisitos: Node.js 20+.
@@ -346,8 +361,15 @@ necessária — é um projeto Next.js padrão).
 
 ## Pontos que ainda precisam de validação
 
-1. **Américas:** nenhuma venda real disponível ainda para confirmar que o
-   texto do canal usado pela Layers bate com o esperado (`"Américas"`).
+1. ~~**Américas:** nenhuma venda real disponível ainda...~~ **Resolvido em
+   24/08/2026:** as primeiras vendas reais de Américas apareceram (18
+   pedidos) com o canal `"Bolsão 2027 - Américas"` e marketplace `"Matriz
+   Educação Américas - Bolsão 2027"`, exatamente como esperado — a regra
+   de separação por canal (não por arquivo) funcionou corretamente, sem
+   nenhum registro caindo em Rocha Miranda por engano. Nota: o produto de
+   Américas custa **R$600** (não R$300 como as demais unidades) — os KPIs
+   lidam bem com isso, pois o valor vem sempre do campo bruto do pedido,
+   nunca hardcoded.
 2. **Status de pagamento além de "Pago"/"Vencido"/"Em aberto"/"Recebido":**
    os demais valores do mapeamento em `lib/status.ts` (Cancelado,
    Estornado, Chargeback, Reembolsado etc.) foram antecipados a partir de

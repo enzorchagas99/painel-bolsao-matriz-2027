@@ -88,6 +88,14 @@ assertEq("status vazio", classifyStatus(""), "nao_classificado");
 assertEq("valor puro", parseMoney("300"), 300);
 assertEq("valor R$ formatado", parseMoney("R$0,00"), 0);
 assertEq("valor R$ com milhar", parseMoney("R$1.234,56"), 1234.56);
+assertEq(
+  "valor sem R$ com milhar e sem decimais (caso real: pedido Américas 2 alunos)",
+  parseMoney("1.200"),
+  1200,
+);
+assertEq("valor sem R$ com milhar de 6 dígitos", parseMoney("12.345"), 12345);
+assertEq("valor sem R$, sem milhar, 3 dígitos não deve virar milhar", parseMoney("300"), 300);
+assertEq("valor sem R$ com vírgula decimal e milhar", parseMoney("1.234,56"), 1234.56);
 
 assertEq(
   "data ambigua (dia=mes coincidem, D/M ou M/D dá no mesmo)",
