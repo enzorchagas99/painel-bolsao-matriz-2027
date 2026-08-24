@@ -105,7 +105,7 @@ export default function OverviewPage() {
         <h2 className="mb-3 font-display text-lg font-bold text-ink">
           Comparativo entre unidades
         </h2>
-        <UnitComparisonTable units={unidadesParaTabela} />
+        <UnitComparisonTable units={unidadesParaTabela} total={kpiGeral} />
       </section>
 
       <section>

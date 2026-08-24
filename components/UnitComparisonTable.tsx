@@ -27,7 +27,17 @@ const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
   { key: "taxaPagamentoPct", label: "% pago", numeric: true },
 ];
 
-export function UnitComparisonTable({ units }: { units: UnitKpi[] }) {
+export function UnitComparisonTable({
+  units,
+  total,
+}: {
+  units: UnitKpi[];
+  /** Linha de total (soma de todas as unidades) fixada no rodapé, fora da
+   * ordenação — normalmente `kpiGeral`, já calculado corretamente (não é
+   * uma soma ingênua das linhas: alunos deduplicam entre unidades e
+   * ticket médio/% pago são recalculados sobre o total, não somados). */
+  total?: UnitKpi;
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("valorVendidoBruto");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -124,6 +134,36 @@ export function UnitComparisonTable({ units }: { units: UnitKpi[] }) {
             </tr>
           ))}
         </tbody>
+        {total ? (
+          <tfoot>
+            <tr className="border-t-2 border-ink-2 bg-paper-2">
+              <td className="whitespace-nowrap px-4 py-3 font-display font-bold uppercase tracking-[0.04em] text-ink">
+                Total
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">
+                {total.alunosPreMatricula}
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">
+                {total.pedidos}
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">
+                {formatBRL(total.valorVendidoBruto)}
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-sem-green">
+                {formatBRL(total.valorPago)}
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-brand-orange-dark">
+                {formatBRL(total.valorPendenteVencido)}
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">
+                {formatBRL(total.ticketMedioPago)}
+              </td>
+              <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">
+                {total.taxaPagamentoPct.toFixed(0)}%
+              </td>
+            </tr>
+          </tfoot>
+        ) : null}
       </table>
     </div>
   );
